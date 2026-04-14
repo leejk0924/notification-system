@@ -22,6 +22,69 @@
 
 > 메시지 브로커(Kafka 등) 도입은 추후 계획
 
+## 패키지 구조
+
+헥사고날 아키텍처(Ports & Adapters)를 기반으로 구성했다.
+메시지 브로커가 확정되지 않은 상황에서 `application` 레이어를 건드리지 않고 어댑터만 교체할 수 있도록 포트를 통해 외부 의존을 격리했다.
+
+```
+com.jk.notificationservice
+│
+├── domain                                        # 순수 도메인 (외부 의존 없음)
+│   ├── NotificationRequest.java                  # 도메인 모델
+│   ├── NotificationStatus.java                   # Enum
+│   └── NotificationChannel.java                  # Enum
+│
+├── application                                   # 유스케이스 & 포트 정의
+│   ├── port
+│   │   ├── in                                   # 인바운드 포트 (유스케이스 인터페이스)
+│   │   │   ├── RegisterNotificationUseCase.java
+│   │   │   ├── QueryNotificationUseCase.java
+│   │   │   └── ProcessNotificationUseCase.java
+│   │   └── out                                  # 아웃바운드 포트
+│   │       ├── NotificationRepository.java
+│   │       └── NotificationSender.java          # 채널/브로커 추상화 핵심 포인트
+│   └── service
+│       ├── NotificationCommandService.java       # RegisterNotificationUseCase 구현
+│       └── NotificationQueryService.java         # QueryNotificationUseCase 구현
+│
+└── adapter
+    ├── in                                        # 인바운드 어댑터 (외부 → 앱)
+    │   ├── web
+    │   │   ├── NotificationController.java
+    │   │   └── dto
+    │   │       ├── NotificationCreateRequest.java
+    │   │       └── NotificationResponse.java
+    │   ├── worker
+    │   │   └── NotificationWorker.java           # DB 폴링 & 발송 처리 (SKIP LOCKED)
+    │   └── scheduler
+    │       ├── StuckRecoveryScheduler.java        # PROCESSING stuck 복구
+    │       ├── ScheduledNotificationScheduler.java # 예약 발송
+    │       └── ExpiredNotificationScheduler.java  # 만료 알림 EXPIRED 처리
+    └── out                                       # 아웃바운드 어댑터 (앱 → 외부)
+        ├── persistence
+        │   ├── NotificationRequestEntity.java    # JPA Entity
+        │   ├── NotificationRequestJpaRepository.java
+        │   └── NotificationPersistenceAdapter.java  # NotificationRepository 구현
+        └── sender
+            ├── EmailSender.java                  # NotificationSender 구현체 (Mock/로그)
+            └── InAppSender.java                  # NotificationSender 구현체
+```
+
+**메시지 브로커 전환 시 변경 범위**
+
+```
+# 현재 (DB 기반 큐)
+adapter/in/worker/NotificationWorker.java         ← DB 폴링
+adapter/out/sender/EmailSender.java               ← 직접 발송
+
+# Kafka 전환 시 추가/교체
+adapter/in/messaging/NotificationConsumer.java    ← Kafka Consumer
+adapter/out/messaging/NotificationProducer.java   ← Kafka Producer
+```
+
+`domain` / `application` 레이어는 변경 없음
+
 ## 실행 방법
 
 ### 사전 요구사항
