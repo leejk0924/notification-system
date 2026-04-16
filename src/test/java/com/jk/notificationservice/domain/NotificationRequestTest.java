@@ -1,5 +1,6 @@
 package com.jk.notificationservice.domain;
 
+import com.jk.notificationservice.common.NotificationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -129,7 +130,7 @@ class NotificationRequestTest {
             NotificationRequest sut = createProcessing(0, 3);
 
             assertThatThrownBy(sut::markAsProcessing)
-                    .isInstanceOf(IllegalArgumentException.class);
+                    .isInstanceOf(NotificationException.class);
         }
 
         @Test
@@ -141,7 +142,7 @@ class NotificationRequestTest {
             );
 
             assertThatThrownBy(sut::markAsSent)
-                    .isInstanceOf(IllegalArgumentException.class);
+                    .isInstanceOf(NotificationException.class);
         }
 
         @Test
@@ -151,7 +152,7 @@ class NotificationRequestTest {
             sut.markAsSent();
 
             assertThatThrownBy(sut::markAsExpired)
-                    .isInstanceOf(IllegalArgumentException.class);
+                    .isInstanceOf(NotificationException.class);
         }
     }
 

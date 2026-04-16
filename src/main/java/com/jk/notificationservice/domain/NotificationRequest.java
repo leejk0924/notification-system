@@ -1,6 +1,7 @@
 package com.jk.notificationservice.domain;
 
 import com.jk.notificationservice.common.BaseAudit;
+import com.jk.notificationservice.common.NotificationException;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -129,7 +130,7 @@ public class NotificationRequest extends BaseAudit {
     // 상태 전이: 유효 기한 초과
     public void markAsExpired() {
         if (this.status != NotificationStatus.PENDING && this.status != NotificationStatus.PROCESSING) {
-            throw new IllegalArgumentException(
+            throw new NotificationException(
                     "PENDING 또는 PROCESSING 상태에서만 EXPIRED로 전이할 수 있습니다. 현재 상태: " + this.status
             );
         }
@@ -168,7 +169,7 @@ public class NotificationRequest extends BaseAudit {
 
     private void validateStatus(NotificationStatus expected) {
         if (this.status != expected) {
-            throw new IllegalArgumentException(
+            throw new NotificationException(
                     expected + " 상태에서만 가능한 전이입니다. 현재 상태: " + this.status
             );
         }
