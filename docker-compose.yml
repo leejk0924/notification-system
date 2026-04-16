@@ -11,9 +11,10 @@ services:
       - MYSQL_ROOT_PASSWORD=root
       - MYSQL_USER=application
       - MYSQL_PASSWORD=application
-      - MYSQL_DATABASE=notification-service
+      - MYSQL_DATABASE=notification_service
     volumes:
       - ./data/mysql/:/var/lib/mysql
+      - ./src/main/resources/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
     ports:
       - "3306:3306"
     networks:
