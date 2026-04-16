@@ -73,24 +73,6 @@ class NotificationRequestTest {
         }
     }
 
-    @DisplayName("scheduleRetry 메서드")
-    @Nested
-    class ScheduleRetry {
-
-        @Test
-        @DisplayName("재시도 예약 시 retryCount가 1 증가하고 status가 PENDING으로 변경되며 nextRetryAt이 설정된다")
-        void scheduleRetry_상태_변경_검증() {
-            NotificationRequest sut = createProcessing(0, 3);
-            LocalDateTime nextRetryAt = LocalDateTime.now().plusMinutes(5);
-
-            sut.scheduleRetry(nextRetryAt);
-
-            assertThat(sut.getRetryCount()).isEqualTo(1);
-            assertThat(sut.getStatus()).isEqualTo(NotificationStatus.PENDING);
-            assertThat(sut.getNextRetryAt()).isEqualTo(nextRetryAt);
-        }
-    }
-
     @DisplayName("handleFailure 메서드")
     @Nested
     class HandleFailure {

@@ -1,73 +1,41 @@
 package com.jk.notificationservice.domain;
 
-import com.jk.notificationservice.common.BaseAudit;
 import com.jk.notificationservice.common.NotificationException;
-import jakarta.persistence.*;
 import lombok.AccessLevel;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
-@Entity
-@Table(name = "notification_requests")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class NotificationRequest extends BaseAudit {
+@AllArgsConstructor(access = AccessLevel.PRIVATE)
+public class NotificationRequest {
 
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @Column(nullable = false)
     private Long recipientId;
-
-    @Enumerated(EnumType.STRING)
-    @Column(length = 64, nullable = false)
     private NotificationType notificationType;
-
-    @Enumerated(EnumType.STRING)
-    @Column(length = 16, nullable = false)
     private NotificationChannel channel;
-
-    @Enumerated(EnumType.STRING)
-    @Column(length = 20, nullable = false)
     private NotificationStatus status;
-
-    @Column(length = 512, nullable = false)
     private String idempotencyKey;
-
-    @Column(length = 64)
     private String referenceType;
-
     private Long referenceId;
-
-    @Column(columnDefinition = "JSON")
     private String payload;
-
     private LocalDateTime scheduledAt;
     private LocalDateTime expireAt;
-
-    @Column(nullable = false)
     private int retryCount;
-
-    @Column(nullable = false)
     private int maxRetryCount;
-
     private LocalDateTime nextRetryAt;
-
-    @Column(columnDefinition = "TEXT")
     private String failureReason;
-
-    @Column(nullable = false)
-    private boolean isRead;
-
+    private boolean read;
     private LocalDateTime readAt;
-
     private LocalDateTime sentAt;
-
-    @Version
     private Long version;
+    private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 
+    // 새 알림 요청 생성
     public static NotificationRequest create(
             Long recipientId,
             NotificationType notificationType,
@@ -93,8 +61,42 @@ public class NotificationRequest extends BaseAudit {
         request.expireAt = expireAt;
         request.status = NotificationStatus.PENDING;
         request.retryCount = 0;
-        request.isRead = false;
+        request.read = false;
         return request;
+    }
+
+
+    // 영속성 레이어에서 도메인 객체 재구성 — Mapper 전용
+    public static NotificationRequest reconstruct(
+            Long id,
+            Long recipientId,
+            NotificationType notificationType,
+            NotificationChannel channel,
+            NotificationStatus status,
+            String idempotencyKey,
+            String referenceType,
+            Long referenceId,
+            String payload,
+            LocalDateTime scheduledAt,
+            LocalDateTime expireAt,
+            int retryCount,
+            int maxRetryCount,
+            LocalDateTime nextRetryAt,
+            String failureReason,
+            boolean isRead,
+            LocalDateTime readAt,
+            LocalDateTime sentAt,
+            Long version,
+            LocalDateTime createdAt,
+            LocalDateTime updatedAt
+    ) {
+        return new NotificationRequest(
+                id, recipientId, notificationType, channel, status,
+                idempotencyKey, referenceType, referenceId, payload,
+                scheduledAt, expireAt, retryCount, maxRetryCount,
+                nextRetryAt, failureReason, isRead, readAt, sentAt,
+                version, createdAt, updatedAt
+        );
     }
 
     // 만료 여부 확인
@@ -121,7 +123,7 @@ public class NotificationRequest extends BaseAudit {
     }
 
     // 상태 전이: 영구 실패 (재시도 불가 — 잘못된 수신자, 페이로드 오류 등)
-    public void markAsFailed(String reason) {
+    public void markAsPermanentlyFailed(String reason) {
         validateStatus(NotificationStatus.PROCESSING);
         this.status = NotificationStatus.FAILED;
         this.failureReason = reason;
@@ -137,20 +139,12 @@ public class NotificationRequest extends BaseAudit {
         this.status = NotificationStatus.EXPIRED;
     }
 
-    // 재시도 예약 (지수 백오프 + Jitter 적용된 nextRetryAt 전달)
-    public void scheduleRetry(LocalDateTime nextRetryAt) {
-        validateStatus(NotificationStatus.PROCESSING);
-        this.retryCount++;
-        this.status = NotificationStatus.PENDING;
-        this.nextRetryAt = nextRetryAt;
-    }
-
     // 읽음 처리 — IN_APP 전용
     public void markAsRead() {
         if (this.channel != NotificationChannel.IN_APP) {
             return;
         }
-        this.isRead = true;
+        this.read = true;
         this.readAt = LocalDateTime.now();
     }
 
@@ -158,13 +152,18 @@ public class NotificationRequest extends BaseAudit {
     public void handleFailure(String reason, LocalDateTime nextRetryAt) {
         validateStatus(NotificationStatus.PROCESSING);
         if (isRetryable()) {
-            this.retryCount++;
-            this.status = NotificationStatus.PENDING;
-            this.nextRetryAt = nextRetryAt;
+            scheduleRetry(nextRetryAt);
         } else {
             this.status = NotificationStatus.DEAD_LETTER;
             this.failureReason = reason;
         }
+    }
+
+    // 재시도 예약 (지수 백오프 + Jitter 적용된 nextRetryAt 전달)
+    private void scheduleRetry(LocalDateTime nextRetryAt) {
+        this.retryCount++;
+        this.status = NotificationStatus.PENDING;
+        this.nextRetryAt = nextRetryAt;
     }
 
     private void validateStatus(NotificationStatus expected) {
