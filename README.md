@@ -257,6 +257,11 @@ next_retry_at = now + (baseDelay * 2^retryCount) + random(0, 30초)
 ### 처리 흐름
 
 ```
+[ExpiredNotificationScheduler] 주기적 실행
+    │
+    └─ expire_at < now 인 PENDING 건 일괄 ──▶ 상태 → EXPIRED
+         (만료 처리의 주 책임)
+
 이벤트 발생
     │
     ▼
@@ -265,7 +270,7 @@ next_retry_at = now + (baseDelay * 2^retryCount) + random(0, 30초)
     ▼
 워커 폴링 (SKIP LOCKED)
     │
-    ├─ expire_at 초과 ──▶ 상태 → EXPIRED
+    ├─ expire_at 초과 ──▶ 상태 → EXPIRED (스케줄러 실행 간격 사이의 안전망)
     │
     ▼
 상태 → PROCESSING
