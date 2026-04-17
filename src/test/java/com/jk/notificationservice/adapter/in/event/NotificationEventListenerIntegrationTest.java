@@ -2,6 +2,7 @@ package com.jk.notificationservice.adapter.in.event;
 
 import com.jk.notificationservice.TestcontainersConfiguration;
 import com.jk.notificationservice.adapter.out.persistence.NotificationRequestJpaRepository;
+import com.jk.notificationservice.application.port.in.DispatchNotificationUseCase;
 import com.jk.notificationservice.domain.NotificationStatus;
 import com.jk.notificationservice.domain.event.NotificationEvent;
 import org.junit.jupiter.api.AfterAll;
@@ -11,6 +12,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Import;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.concurrent.TimeUnit;
@@ -23,6 +25,9 @@ import static org.awaitility.Awaitility.await;
 @Import(TestcontainersConfiguration.class)
 @SpringBootTest
 class NotificationEventListenerIntegrationTest {
+
+    @MockitoBean
+    private DispatchNotificationUseCase dispatchNotificationUseCase;
 
     @Autowired
     private ApplicationEventPublisher eventPublisher;
