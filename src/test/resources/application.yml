@@ -1,0 +1,3 @@
+notification:
+  scheduler:
+    dispatch-delay: PT0.3S
