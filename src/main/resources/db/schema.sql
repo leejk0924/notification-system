@@ -32,3 +32,20 @@ CREATE TABLE IF NOT EXISTS notification_requests
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4
   COLLATE = utf8mb4_0900_ai_ci;
+
+CREATE TABLE IF NOT EXISTS notification_registration_failures
+(
+    id                BIGINT      NOT NULL AUTO_INCREMENT,
+    recipient_id      BIGINT      NOT NULL,
+    notification_type VARCHAR(64) NOT NULL,
+    channel           VARCHAR(16) NOT NULL,
+    reference_type    VARCHAR(64),
+    reference_id      BIGINT,
+    failure_reason    TEXT,
+    created_at        DATETIME    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    PRIMARY KEY (id),
+    INDEX idx_recipient_id (recipient_id)
+) ENGINE = InnoDB
+  DEFAULT CHARSET = utf8mb4
+  COLLATE = utf8mb4_0900_ai_ci;
