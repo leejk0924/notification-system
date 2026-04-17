@@ -4,8 +4,6 @@ import com.jk.notificationservice.adapter.out.persistence.NotificationRequestEnt
 import com.jk.notificationservice.domain.NotificationRequest;
 import org.springframework.stereotype.Component;
 
-import java.util.Objects;
-
 @Component
 public class NotificationRequestMapper {
 
