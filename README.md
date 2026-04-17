@@ -87,7 +87,10 @@ com.jk.notificationservice
 │       ├── policy
 │       │   └── ExponentialBackoffRetryPolicyAdapter.java  # RetryPolicyPort 구현
 │       └── send
-│           └── StubNotificationSendAdapter.java     # NotificationSendPort 스텁 구현
+│           ├── ChannelSender.java                   # 채널별 발송 인터페이스
+│           ├── NotificationSendAdapter.java         # NotificationSendPort 구현 (채널별 라우팅)
+│           ├── MockEmailChannelSender.java          # EMAIL Mock 구현체
+│           └── MockInAppChannelSender.java          # IN_APP Mock 구현체
 │
 ├── config
 │   └── AsyncConfig.java                         # 스레드 풀, MDC 전파, Graceful Shutdown, @EnableScheduling
@@ -469,5 +472,5 @@ next_retry_at = now + min(2^retryCount * 60초, 1800초) + random(0, 9초)
 운영 환경에서는 DEAD_LETTER 누적 시 관리자에게 알림(Slack, 이메일 등)을 발송하거나  별도 대시보드에서 수동 재처리할 수 있는 인터페이스가 필요하다.
 
 ### 채널 추상화 확장
-현재 EMAIL과 IN_APP 두 채널을 지원한다.
-채널별 발송기를 인터페이스로 추상화하여 SMS, 푸시 알림 등 채널 추가 시 구현체만 추가하면 되도록 하는 것이 좋아보인다.
+`ChannelSender` 인터페이스로 채널별 발송 구현체를 분리했다.
+현재 EMAIL과 IN_APP Mock 구현체를 제공하며, SMS·푸시 알림 등 채널 추가 시 `ChannelSender` 구현체만 추가하면 된다.
