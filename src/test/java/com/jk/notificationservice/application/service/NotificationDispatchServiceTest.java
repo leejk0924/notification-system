@@ -1,6 +1,7 @@
 package com.jk.notificationservice.application.service;
 
 import com.jk.notificationservice.application.port.out.NotificationSendPort;
+import com.jk.notificationservice.application.port.out.RetryPolicyPort;
 import com.jk.notificationservice.common.NotificationSendFailureException;
 import com.jk.notificationservice.domain.NotificationChannel;
 import com.jk.notificationservice.domain.NotificationRequest;
@@ -35,6 +36,9 @@ class NotificationDispatchServiceTest {
 
     @Mock
     private NotificationSendPort notificationSendPort;
+
+    @Mock
+    private RetryPolicyPort retryPolicyPort;
 
     @Nested
     @DisplayName("dispatch 메서드")
@@ -71,6 +75,7 @@ class NotificationDispatchServiceTest {
             // given
             NotificationRequest request = createPendingRequest();
             List<NotificationStatus> capturedStatuses = new ArrayList<>();
+            LocalDateTime nextRetry = LocalDateTime.now().plusMinutes(5);
 
             given(notificationFacade.findPendingForDispatch(any(LocalDateTime.class), anyInt()))
                     .willReturn(List.of(request));
@@ -80,6 +85,7 @@ class NotificationDispatchServiceTest {
                 return req;
             });
             willThrow(new NotificationSendFailureException("일시 오류", null)).given(notificationSendPort).send(any());
+            given(retryPolicyPort.calculateNextRetryAt(anyInt())).willReturn(nextRetry);
 
             // when
             sut.dispatch();

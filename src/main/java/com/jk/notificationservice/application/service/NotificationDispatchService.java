@@ -2,6 +2,7 @@ package com.jk.notificationservice.application.service;
 
 import com.jk.notificationservice.application.port.in.DispatchNotificationUseCase;
 import com.jk.notificationservice.application.port.out.NotificationSendPort;
+import com.jk.notificationservice.application.port.out.RetryPolicyPort;
 import com.jk.notificationservice.common.NotificationSendFailureException;
 import com.jk.notificationservice.domain.NotificationRequest;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,7 @@ public class NotificationDispatchService implements DispatchNotificationUseCase 
 
     private final NotificationFacade notificationFacade;
     private final NotificationSendPort notificationSendPort;
+    private final RetryPolicyPort retryPolicyPort;
 
     @Override
     public void dispatch() {
@@ -52,15 +54,9 @@ public class NotificationDispatchService implements DispatchNotificationUseCase 
             log.info("알림 발송 완료. id={}", processing.getId());
         } catch (NotificationSendFailureException e) {
             log.warn("알림 발송 실패. id={}, reason={}", processing.getId(), e.getMessage());
-            processing.handleFailure(e.getMessage(), calculateNextRetryAt(processing.getRetryCount()));
+            processing.handleFailure(e.getMessage(), retryPolicyPort.calculateNextRetryAt(processing.getRetryCount()));
         }
 
         notificationFacade.save(processing);
-    }
-
-    private LocalDateTime calculateNextRetryAt(int retryCount) {
-        long delaySeconds = Math.min((long) Math.pow(2, retryCount) * 60L, 1800L);
-        long jitter = (long) (Math.random() * 10);
-        return LocalDateTime.now().plusSeconds(delaySeconds + jitter);
     }
 }
