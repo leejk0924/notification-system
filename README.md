@@ -31,45 +31,58 @@
 com.jk.notificationservice
 │
 ├── domain                                        # 순수 도메인 (외부 의존 없음)
-│   ├── NotificationRequest.java                  # 도메인 모델
+│   ├── event
+│   │   └── NotificationEvent.java               # 알림 발행 이벤트 (record)
+│   ├── NotificationRequest.java                  # 도메인 모델 (TTL 계산 포함)
 │   ├── NotificationStatus.java                   # Enum
-│   └── NotificationChannel.java                  # Enum
+│   ├── NotificationChannel.java                  # Enum
+│   └── NotificationType.java                     # Enum
 │
 ├── application                                   # 유스케이스 & 포트 정의
 │   ├── port
 │   │   ├── in                                   # 인바운드 포트 (유스케이스 인터페이스)
 │   │   │   ├── RegisterNotificationUseCase.java
-│   │   │   ├── QueryNotificationUseCase.java
-│   │   │   └── ProcessNotificationUseCase.java
+│   │   │   └── QueryNotificationUseCase.java
 │   │   └── out                                  # 아웃바운드 포트
 │   │       ├── NotificationRepository.java
-│   │       └── NotificationSender.java          # 채널/브로커 추상화 핵심 포인트
+│   │       └── DeadLetterPort.java              # 등록 실패 저장 추상화
 │   └── service
 │       ├── NotificationCommandService.java       # RegisterNotificationUseCase 구현
-│       └── NotificationQueryService.java         # QueryNotificationUseCase 구현
+│       ├── NotificationQueryService.java         # QueryNotificationUseCase 구현
+│       └── NotificationSaveFacade.java           # 저장 트랜잭션 경계 분리 (Facade)
 │
-└── adapter
-    ├── in                                        # 인바운드 어댑터 (외부 → 앱)
-    │   ├── web
-    │   │   ├── NotificationController.java
-    │   │   └── dto
-    │   │       ├── NotificationCreateRequest.java
-    │   │       └── NotificationResponse.java
-    │   ├── worker
-    │   │   └── NotificationWorker.java           # DB 폴링 & 발송 처리 (SKIP LOCKED)
-    │   └── scheduler
-    │       ├── StuckRecoveryScheduler.java        # PROCESSING stuck 복구
-    │       ├── ScheduledNotificationScheduler.java # 예약 발송
-    │       └── ExpiredNotificationScheduler.java  # 만료 알림 EXPIRED 처리
-    └── out                                       # 아웃바운드 어댑터 (앱 → 외부)
-        ├── persistence
-        │   ├── NotificationRequestEntity.java    # JPA Entity
-        │   ├── NotificationRequestJpaRepository.java
-        │   └── NotificationPersistenceAdapter.java  # NotificationRepository 구현
-        └── sender
-            ├── EmailSender.java                  # NotificationSender 구현체 (Mock/로그)
-            └── InAppSender.java                  # NotificationSender 구현체
+├── adapter
+│   ├── in                                        # 인바운드 어댑터 (외부 → 앱)
+│   │   ├── event
+│   │   │   └── NotificationEventListener.java   # AFTER_COMMIT + @Async 이벤트 처리
+│   │   └── web
+│   │       ├── NotificationController.java       # 알림 조회 API
+│   │       ├── DummyEventController.java         # 이벤트 발행 테스트용 API
+│   │       └── dto
+│   │           ├── EnrollmentCompletedRequest.java
+│   │           ├── PaymentConfirmedRequest.java
+│   │           ├── CourseStartReminderRequest.java
+│   │           └── NotificationResponse.java
+│   └── out                                       # 아웃바운드 어댑터 (앱 → 외부)
+│       └── persistence
+│           ├── NotificationRequestEntity.java    # JPA Entity
+│           ├── NotificationRequestJpaRepository.java
+│           ├── NotificationPersistenceAdapter.java   # NotificationRepository 구현
+│           ├── RegistrationFailureEntity.java        # 알림 등록 실패 JPA Entity
+│           ├── RegistrationFailureJpaRepository.java
+│           ├── DeadLetterPersistenceAdapter.java     # DeadLetterPort 구현
+│           └── mapper
+│               └── NotificationRequestMapper.java    # 도메인↔엔티티 변환
+│
+├── config
+│   └── AsyncConfig.java                         # 스레드 풀, MDC 전파, Graceful Shutdown
+│
+└── common
+    ├── NotificationException.java
+    └── NotificationNotFoundException.java
 ```
+
+> `worker`, `scheduler`, `sender` 등 발송 처리 레이어는 추후 구현 예정
 
 **메시지 브로커 전환 시 변경 범위**
 
@@ -107,7 +120,32 @@ java -jar build/libs/notification-service-0.0.1-SNAPSHOT.jar --spring.profiles.a
 
 ## API 목록 및 예시
 
-> 구현 완료 후 작성 예정
+### 알림 조회
+
+| Method | URL | 설명 |
+|--------|-----|------|
+| `GET` | `/api/notifications/{id}` | 단건 조회 (상태, 실패 사유 포함) |
+| `GET` | `/api/notifications` | 수신자별 목록 조회 (읽음 필터, 페이징) |
+
+**목록 조회 파라미터**
+
+| 파라미터 | 위치 | 필수 | 설명 |
+|---------|------|------|------|
+| `X-User-Id` | Header | O | 수신자 ID |
+| `read` | Query | X | `true` / `false` / 생략(전체) |
+| `page`, `size`, `sort` | Query | X | 페이징 (기본: size=20, sort=createdAt) |
+
+### 이벤트 발행 (테스트용)
+
+> 실제 서비스에서는 비즈니스 레이어가 이벤트를 발행한다. 아래 API는 개발/테스트 목적으로만 사용한다.
+
+| Method | URL | 이벤트 |
+|--------|-----|--------|
+| `POST` | `/api/dummy/enrollment-completed` | 수강 신청 완료 |
+| `POST` | `/api/dummy/payment-confirmed` | 결제 확정 |
+| `POST` | `/api/dummy/course-start-reminder` | 강의 시작 알림 |
+
+모든 더미 API는 `202 Accepted`를 반환하고 알림 처리는 비동기로 진행된다.
 
 ## 데이터 모델 설명
 
@@ -137,6 +175,8 @@ java -jar build/libs/notification-service-0.0.1-SNAPSHOT.jar --spring.profiles.a
 | updated_at | DATETIME | CURRENT_TIMESTAMP ON UPDATE | PROCESSING stuck 감지 스케줄러가 이 컬럼만으로 N분 이상 PROCESSING 여부 판단 |
 
 ### 알림 유형별 TTL
+
+TTL은 `NotificationRequest.create()` 내부에서 유형에 따라 자동 계산된다. 서비스 레이어에서 별도로 전달하지 않는다.
 
 | 알림 유형 | TTL | 이유 |
 |-----------|-----|------|
@@ -189,6 +229,45 @@ Kafka 등 메시지 브로커 도입 시 구현체만 교체하면 된다.
 ### Outbox 패턴 채택
 알림 발송을 비즈니스 트랜잭션과 같은 커넥션에서 DB에 먼저 기록한 뒤 워커가 발송하는 구조를 택했다.
 트랜잭션 커밋 직후 네트워크 장애가 발생하더라도 알림 유실 없이 재처리할 수 있다.
+
+### 알림 등록 실패와 발송 실패 분리
+
+알림 처리 실패는 성격이 다른 두 종류로 구분한다.
+
+| 실패 유형 | 상태 | 저장 위치 | 원인 |
+|---------|------|---------|------|
+| 등록 실패 | — | `notification_registration_failures` | 이벤트 수신 후 DB 저장 단계 실패 |
+| 발송 실패 | `DEAD_LETTER` | `notification_requests` | 워커가 실제 발송 시도 중 재시도 소진 |
+
+`DEAD_LETTER` 상태만 사용하면 "등록조차 못 된 건"과 "등록은 됐지만 발송 실패한 건"이 구분되지 않는다.
+등록 실패는 `DeadLetterPort`를 통해 별도 테이블에 저장하며, 추후 메시지 브로커 도입 시 브로커로 대체할 수 있도록 포트로 추상화되어 있다.
+
+### 알림 등록 트랜잭션 — Facade 패턴
+
+`NotificationCommandService.register()`는 트랜잭션 없이 동작한다.
+내부적으로 `NotificationSaveFacade.save()` (별도 `@Transactional`)를 호출해 저장 트랜잭션을 완전히 마친 뒤, 실패 시 `DeadLetterPort.save()`가 별도 트랜잭션으로 실행된다.
+
+```
+register() — 트랜잭션 없음
+  ├─ NotificationSaveFacade.save()  @Transactional  ← 커넥션 A (완료 후 반납)
+  └─ 실패 시 DeadLetterPort.save()  @Transactional  ← 커넥션 A 재사용
+```
+
+`REQUIRES_NEW`를 사용하면 외부 트랜잭션이 커넥션을 잡은 채 내부 트랜잭션이 추가 커넥션을 요구해 동시 실패가 많을 경우 커넥션 풀이 고갈될 수 있다.
+
+### 이벤트 리스너 트랜잭션 전략 — AFTER_COMMIT 채택
+알림 등록 이벤트 리스너는 `@TransactionalEventListener(phase = AFTER_COMMIT)`로 동작한다.
+
+**비즈니스 트랜잭션 미커밋 시 이벤트 미발행**
+비즈니스 트랜잭션(수강 신청, 결제 등)이 롤백되면 `AFTER_COMMIT` 리스너는 실행되지 않는다.
+알림이 발행되지 않는 것은 정상이며, 이는 비즈니스 레이어가 책임지는 영역이다.
+
+**비즈니스 커밋 후 알림 등록 실패 시 데이터 유실 가능성**
+비즈니스 트랜잭션이 커밋된 뒤 알림 DB 저장 중 서버가 다운되면 알림이 유실될 수 있다.
+이 경우 `DEAD_LETTER` 상태로 보관해 수동 재처리 경로를 확보하는 방향으로 대응한다.
+
+`BEFORE_COMMIT`을 사용하면 알림 저장 실패 시 비즈니스 트랜잭션까지 롤백되므로 채택하지 않았다.
+알림 처리 실패가 수강 신청이나 결제 트랜잭션에 영향을 주어서는 안 된다는 요구사항을 우선했다.
 
 ### DB 기반 큐 (SKIP LOCKED)
 초기 트래픽 규모에서는 메시지 브로커 없이 MySQL만으로 워커 간 중복 처리를 방지할 수 있다.
@@ -254,7 +333,26 @@ next_retry_at = now + (baseDelay * 2^retryCount) + random(0, 30초)
 
 ## 비동기 처리 구조 및 재시도 정책
 
-### 처리 흐름
+### 알림 등록 흐름 (현재 구현)
+
+```
+비즈니스 이벤트 발생 (수강 신청, 결제 등)
+    │
+    ▼
+ApplicationEventPublisher.publishEvent(NotificationEvent)
+    │
+    ▼ @TransactionalEventListener(AFTER_COMMIT) + @Async NotificationEventListener.handle()
+    │
+    ├─ NotificationSaveFacade.save()  @Transactional
+    │       └─ 성공 → notification_requests (PENDING)
+    │
+    └─ 실패 시 DeadLetterPort.save()  @Transactional
+                └─ notification_registration_failures
+```
+
+비즈니스 트랜잭션 커밋 이후 별도 스레드에서 비동기 처리되므로 알림 등록 실패가 비즈니스 트랜잭션에 영향을 주지 않는다.
+
+### 발송 처리 흐름
 
 ```
 [ExpiredNotificationScheduler] 주기적 실행
