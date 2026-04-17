@@ -1,7 +1,6 @@
 package com.jk.notificationservice.application.service;
 
 import com.jk.notificationservice.application.port.out.DeadLetterPort;
-import com.jk.notificationservice.application.port.out.NotificationRepository;
 import com.jk.notificationservice.domain.NotificationChannel;
 import com.jk.notificationservice.domain.NotificationRequest;
 import com.jk.notificationservice.domain.NotificationStatus;
@@ -37,10 +36,7 @@ class NotificationCommandServiceTest {
     private NotificationCommandService sut;
 
     @Mock
-    private NotificationRepository notificationRepository;
-
-    @Mock
-    private NotificationSaveFacade notificationSaveFacade;
+    private NotificationFacade notificationFacade;
 
     @Mock
     private DeadLetterPort deadLetterPort;
@@ -54,14 +50,14 @@ class NotificationCommandServiceTest {
         void register_신규이벤트_저장() {
             // given
             NotificationEvent event = createEvent(ENROLLMENT_COMPLETED, EMAIL);
-            given(notificationRepository.findByIdempotencyKey(any())).willReturn(Optional.empty());
+            given(notificationFacade.findByIdempotencyKey(any())).willReturn(Optional.empty());
 
             // when
             sut.register(event);
 
             // then
             ArgumentCaptor<NotificationRequest> captor = ArgumentCaptor.forClass(NotificationRequest.class);
-            then(notificationSaveFacade).should().save(captor.capture());
+            then(notificationFacade).should().save(captor.capture());
             NotificationRequest request = captor.getValue();
 
             assertThat(request.getStatus()).isEqualTo(NotificationStatus.PENDING);
@@ -74,13 +70,13 @@ class NotificationCommandServiceTest {
         void register_중복요청_무시() {
             // given
             NotificationEvent event = createEvent(ENROLLMENT_COMPLETED, EMAIL);
-            given(notificationRepository.findByIdempotencyKey(any())).willReturn(Optional.of(mock(NotificationRequest.class)));
+            given(notificationFacade.findByIdempotencyKey(any())).willReturn(Optional.of(mock(NotificationRequest.class)));
 
             // when
             sut.register(event);
 
             // then
-            then(notificationSaveFacade).should(never()).save(any());
+            then(notificationFacade).should(never()).save(any());
             then(deadLetterPort).should(never()).save(any(), any());
         }
 
@@ -89,17 +85,17 @@ class NotificationCommandServiceTest {
         void register_멱등성키_형식_검증() {
             // given
             NotificationEvent event = createEvent(ENROLLMENT_COMPLETED, EMAIL);
-            given(notificationRepository.findByIdempotencyKey(any())).willReturn(Optional.empty());
+            given(notificationFacade.findByIdempotencyKey(any())).willReturn(Optional.empty());
 
             // when
             sut.register(event);
 
             // then
             String expectedKey = "ENROLLMENT_COMPLETED:ENROLLMENT:100:1:EMAIL";
-            then(notificationRepository).should().findByIdempotencyKey(expectedKey);
+            then(notificationFacade).should().findByIdempotencyKey(expectedKey);
 
             ArgumentCaptor<NotificationRequest> captor = ArgumentCaptor.forClass(NotificationRequest.class);
-            then(notificationSaveFacade).should().save(captor.capture());
+            then(notificationFacade).should().save(captor.capture());
             assertThat(captor.getValue().getIdempotencyKey()).isEqualTo(expectedKey);
         }
 
@@ -108,8 +104,8 @@ class NotificationCommandServiceTest {
         void register_저장실패_DeadLetter저장() {
             // given
             NotificationEvent event = createEvent(ENROLLMENT_COMPLETED, EMAIL);
-            given(notificationRepository.findByIdempotencyKey(any())).willReturn(Optional.empty());
-            willThrow(new RuntimeException("DB 오류")).given(notificationSaveFacade).save(any());
+            given(notificationFacade.findByIdempotencyKey(any())).willReturn(Optional.empty());
+            willThrow(new RuntimeException("DB 오류")).given(notificationFacade).save(any());
 
             // when
             sut.register(event);
@@ -133,14 +129,14 @@ class NotificationCommandServiceTest {
         void register_저장실패_재시도없음() {
             // given
             NotificationEvent event = createEvent(ENROLLMENT_COMPLETED, EMAIL);
-            given(notificationRepository.findByIdempotencyKey(any())).willReturn(Optional.empty());
-            willThrow(new RuntimeException("DB 오류")).given(notificationSaveFacade).save(any());
+            given(notificationFacade.findByIdempotencyKey(any())).willReturn(Optional.empty());
+            willThrow(new RuntimeException("DB 오류")).given(notificationFacade).save(any());
 
             // when
             sut.register(event);
 
             // then
-            then(notificationSaveFacade).should(times(1)).save(any());
+            then(notificationFacade).should(times(1)).save(any());
         }
     }
 
@@ -154,7 +150,7 @@ class NotificationCommandServiceTest {
         void expireAt_타입별_TTL(NotificationType type, long expectedHours) {
             // given
             NotificationEvent event = createEvent(type, EMAIL);
-            given(notificationRepository.findByIdempotencyKey(any())).willReturn(Optional.empty());
+            given(notificationFacade.findByIdempotencyKey(any())).willReturn(Optional.empty());
 
             // when
             LocalDateTime before = LocalDateTime.now().plusHours(expectedHours).minusSeconds(5);
@@ -163,7 +159,7 @@ class NotificationCommandServiceTest {
 
             // then
             ArgumentCaptor<NotificationRequest> captor = ArgumentCaptor.forClass(NotificationRequest.class);
-            then(notificationSaveFacade).should().save(captor.capture());
+            then(notificationFacade).should().save(captor.capture());
             assertThat(captor.getValue().getExpireAt()).isBetween(before, after);
         }
 
@@ -187,7 +183,7 @@ class NotificationCommandServiceTest {
             // given
             NotificationEvent emailEvent = createEvent(ENROLLMENT_COMPLETED, EMAIL);
             NotificationEvent inAppEvent = createEvent(ENROLLMENT_COMPLETED, IN_APP);
-            given(notificationRepository.findByIdempotencyKey(any())).willReturn(Optional.empty());
+            given(notificationFacade.findByIdempotencyKey(any())).willReturn(Optional.empty());
 
             // when
             sut.register(emailEvent);
@@ -195,7 +191,7 @@ class NotificationCommandServiceTest {
 
             // then
             ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
-            then(notificationRepository)
+            then(notificationFacade)
                     .should(times(2))
                     .findByIdempotencyKey(keyCaptor.capture());
             assertThat(keyCaptor.getAllValues().get(0))
@@ -208,7 +204,7 @@ class NotificationCommandServiceTest {
             // given
             NotificationEvent course100Event = new NotificationEvent(1L, ENROLLMENT_COMPLETED, EMAIL, "ENROLLMENT", 100L);
             NotificationEvent course200Event = new NotificationEvent(1L, ENROLLMENT_COMPLETED, EMAIL, "ENROLLMENT", 200L);
-            given(notificationRepository.findByIdempotencyKey(any())).willReturn(Optional.empty());
+            given(notificationFacade.findByIdempotencyKey(any())).willReturn(Optional.empty());
 
             // when
             sut.register(course100Event);
@@ -216,7 +212,7 @@ class NotificationCommandServiceTest {
 
             // then
             ArgumentCaptor<String> keyCaptor = ArgumentCaptor.forClass(String.class);
-            then(notificationRepository)
+            then(notificationFacade)
                     .should(times(2))
                     .findByIdempotencyKey(keyCaptor.capture());
             assertThat(keyCaptor.getAllValues().get(0))

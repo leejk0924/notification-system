@@ -2,7 +2,6 @@ package com.jk.notificationservice.application.service;
 
 import com.jk.notificationservice.application.port.in.RegisterNotificationUseCase;
 import com.jk.notificationservice.application.port.out.DeadLetterPort;
-import com.jk.notificationservice.application.port.out.NotificationRepository;
 import com.jk.notificationservice.domain.NotificationRequest;
 import com.jk.notificationservice.domain.event.NotificationEvent;
 import lombok.RequiredArgsConstructor;
@@ -16,21 +15,20 @@ public class NotificationCommandService implements RegisterNotificationUseCase {
 
     private static final int DEFAULT_MAX_RETRY_COUNT = 3;
 
-    private final NotificationRepository notificationRepository;
-    private final NotificationSaveFacade notificationSaveFacade;
+    private final NotificationFacade notificationFacade;
     private final DeadLetterPort deadLetterPort;
 
     @Override
     public void register(NotificationEvent event) {
         String idempotencyKey = buildIdempotencyKey(event);
 
-        if (notificationRepository.findByIdempotencyKey(idempotencyKey).isPresent()) {
+        if (notificationFacade.findByIdempotencyKey(idempotencyKey).isPresent()) {
             log.info("중복 알림 요청 무시. idempotencyKey={}", idempotencyKey);
             return;
         }
 
         try {
-            notificationSaveFacade.save(NotificationRequest.create(
+            notificationFacade.save(NotificationRequest.create(
                     event.recipientId(),
                     event.notificationType(),
                     event.channel(),
@@ -39,7 +37,7 @@ public class NotificationCommandService implements RegisterNotificationUseCase {
                     event.referenceType(),
                     event.referenceId(),
                     null,
-                    null                            // scheduledAt — referenceId로 조회 필요 (추후 구현)
+                    null                            // TODO: scheduledAt — referenceId로 조회 필요 (추후 구현)
             ));
             log.info("알림 등록 완료. idempotencyKey={}", idempotencyKey);
         } catch (Exception e) {
