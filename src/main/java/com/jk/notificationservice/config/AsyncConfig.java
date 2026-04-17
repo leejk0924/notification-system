@@ -10,6 +10,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskDecorator;
 import org.springframework.scheduling.annotation.AsyncConfigurer;
 import org.springframework.scheduling.annotation.EnableAsync;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.lang.reflect.Method;
@@ -17,6 +18,7 @@ import java.util.Map;
 
 @Configuration
 @EnableAsync
+@EnableScheduling
 public class AsyncConfig implements AsyncConfigurer {
     @Bean(name = TaskExecutionAutoConfiguration.APPLICATION_TASK_EXECUTOR_BEAN_NAME)
     public ThreadPoolTaskExecutor asyncTaskExecutor() {
