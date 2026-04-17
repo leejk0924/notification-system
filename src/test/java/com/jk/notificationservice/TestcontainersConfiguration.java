@@ -8,11 +8,17 @@ import org.testcontainers.utility.DockerImageName;
 
 @TestConfiguration(proxyBeanMethods = false)
 class TestcontainersConfiguration {
+    private static final DockerImageName MYSQL_IMAGE = DockerImageName.parse("mysql:8.4");
 
     @Bean
     @ServiceConnection
+    @SuppressWarnings("resource")
     MySQLContainer mysqlContainer() {
-        return new MySQLContainer(DockerImageName.parse("mysql:latest"));
+        return new MySQLContainer(MYSQL_IMAGE)
+                .withDatabaseName("notification_service")
+                .withUsername("application")
+                .withPassword("password")
+                .withInitScript("db/schema.sql");
     }
 
 }
