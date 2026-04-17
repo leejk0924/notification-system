@@ -46,15 +46,26 @@ com.jk.notificationservice
 │   │   └── out                                  # 아웃바운드 포트
 │   │       ├── NotificationRepository.java
 │   │       └── DeadLetterPort.java              # 등록 실패 저장 추상화
+│   │   ├── DispatchNotificationUseCase.java
+│   │   ├── RegisterNotificationUseCase.java
+│   │   └── QueryNotificationUseCase.java
+│   │   └── out                                  # 아웃바운드 포트
+│   │       ├── NotificationRepository.java
+│   │       ├── NotificationSendPort.java        # 실제 발송 추상화
+│   │       ├── RetryPolicyPort.java             # 재시도 간격 계산 추상화
+│   │       └── DeadLetterPort.java              # 등록 실패 저장 추상화
 │   └── service
 │       ├── NotificationCommandService.java       # RegisterNotificationUseCase 구현
 │       ├── NotificationQueryService.java         # QueryNotificationUseCase 구현
-│       └── NotificationSaveFacade.java           # 저장 트랜잭션 경계 분리 (Facade)
+│       ├── NotificationDispatchService.java      # DispatchNotificationUseCase 구현
+│       └── NotificationFacade.java              # 저장·조회 트랜잭션 경계 분리 (Facade)
 │
 ├── adapter
 │   ├── in                                        # 인바운드 어댑터 (외부 → 앱)
 │   │   ├── event
 │   │   │   └── NotificationEventListener.java   # AFTER_COMMIT + @Async 이벤트 처리
+│   │   ├── scheduler
+│   │   │   └── NotificationDispatchScheduler.java  # fixedDelay 폴링 스케줄러
 │   │   └── web
 │   │       ├── NotificationController.java       # 알림 조회 API
 │   │       ├── DummyEventController.java         # 이벤트 발행 테스트용 API
@@ -64,25 +75,27 @@ com.jk.notificationservice
 │   │           ├── CourseStartReminderRequest.java
 │   │           └── NotificationResponse.java
 │   └── out                                       # 아웃바운드 어댑터 (앱 → 외부)
-│       └── persistence
-│           ├── NotificationRequestEntity.java    # JPA Entity
-│           ├── NotificationRequestJpaRepository.java
-│           ├── NotificationPersistenceAdapter.java   # NotificationRepository 구현
-│           ├── RegistrationFailureEntity.java        # 알림 등록 실패 JPA Entity
-│           ├── RegistrationFailureJpaRepository.java
-│           ├── DeadLetterPersistenceAdapter.java     # DeadLetterPort 구현
-│           └── mapper
-│               └── NotificationRequestMapper.java    # 도메인↔엔티티 변환
+│       ├── persistence
+│       │   ├── NotificationRequestEntity.java    # JPA Entity
+│       │   ├── NotificationRequestJpaRepository.java
+│       │   ├── NotificationPersistenceAdapter.java   # NotificationRepository 구현
+│       │   ├── RegistrationFailureEntity.java        # 알림 등록 실패 JPA Entity
+│       │   ├── RegistrationFailureJpaRepository.java
+│       │   ├── DeadLetterPersistenceAdapter.java     # DeadLetterPort 구현
+│       │   └── mapper
+│       │       └── NotificationRequestMapper.java    # 도메인↔엔티티 변환
+│       ├── policy
+│       │   └── ExponentialBackoffRetryPolicyAdapter.java  # RetryPolicyPort 구현
+│       └── send
+│           └── StubNotificationSendAdapter.java     # NotificationSendPort 스텁 구현
 │
 ├── config
-│   └── AsyncConfig.java                         # 스레드 풀, MDC 전파, Graceful Shutdown
+│   └── AsyncConfig.java                         # 스레드 풀, MDC 전파, Graceful Shutdown, @EnableScheduling
 │
 └── common
     ├── NotificationException.java
-    └── NotificationNotFoundException.java
-```
-
-> `worker`, `scheduler`, `sender` 등 발송 처리 레이어는 추후 구현 예정
+    ├── NotificationNotFoundException.java
+    └── NotificationSendFailureException.java
 
 **메시지 브로커 전환 시 변경 범위**
 
@@ -167,7 +180,7 @@ java -jar build/libs/notification-service-0.0.1-SNAPSHOT.jar --spring.profiles.a
 | retry_count | INT | 0 | 현재 재시도 횟수 |
 | max_retry_count | INT | 3 | 최대 재시도 횟수 (유형별 조정 가능) |
 | next_retry_at | DATETIME | NULL | 다음 재시도 예정 시각 (지수 백오프 + Jitter) |
-| failure_reason | TEXT | NULL | 실패 원인 (디버깅용) |
+| last_failure_reason | TEXT | NULL | 마지막 실패 원인. 재시도 성공 후에도 유지되어 이력 확인 가능 |
 | is_read | TINYINT(1) | 0 | 읽음 여부 — IN_APP 전용. EMAIL 채널은 애플리케이션 레벨에서 업데이트하지 않음 |
 | read_at | DATETIME | NULL | 읽은 시각 — IN_APP 전용 |
 | version | BIGINT | 0 | 낙관적 락 — 읽음 처리 전용 (상태 전이는 SKIP LOCKED로 분리) |
@@ -242,14 +255,17 @@ Kafka 등 메시지 브로커 도입 시 구현체만 교체하면 된다.
 `DEAD_LETTER` 상태만 사용하면 "등록조차 못 된 건"과 "등록은 됐지만 발송 실패한 건"이 구분되지 않는다.
 등록 실패는 `DeadLetterPort`를 통해 별도 테이블에 저장하며, 추후 메시지 브로커 도입 시 브로커로 대체할 수 있도록 포트로 추상화되어 있다.
 
-### 알림 등록 트랜잭션 — Facade 패턴
+### 알림 등록·발송 트랜잭션 — Facade 패턴
+
+`NotificationFacade`는 저장·조회 트랜잭션 경계를 분리하는 역할을 한다.
+`NotificationCommandService`와 `NotificationDispatchService` 모두 직접 Repository를 참조하지 않고 Facade를 통해서만 접근한다.
 
 `NotificationCommandService.register()`는 트랜잭션 없이 동작한다.
-내부적으로 `NotificationSaveFacade.save()` (별도 `@Transactional`)를 호출해 저장 트랜잭션을 완전히 마친 뒤, 실패 시 `DeadLetterPort.save()`가 별도 트랜잭션으로 실행된다.
+내부적으로 `NotificationFacade.save()` (별도 `@Transactional`)를 호출해 저장 트랜잭션을 완전히 마친 뒤, 실패 시 `DeadLetterPort.save()`가 별도 트랜잭션으로 실행된다.
 
 ```
 register() — 트랜잭션 없음
-  ├─ NotificationSaveFacade.save()  @Transactional  ← 커넥션 A (완료 후 반납)
+  ├─ NotificationFacade.save()  @Transactional  ← 커넥션 A (완료 후 반납)
   └─ 실패 시 DeadLetterPort.save()  @Transactional  ← 커넥션 A 재사용
 ```
 
@@ -343,7 +359,7 @@ ApplicationEventPublisher.publishEvent(NotificationEvent)
     │
     ▼ @TransactionalEventListener(AFTER_COMMIT) + @Async NotificationEventListener.handle()
     │
-    ├─ NotificationSaveFacade.save()  @Transactional
+    ├─ NotificationFacade.save()  @Transactional
     │       └─ 성공 → notification_requests (PENDING)
     │
     └─ 실패 시 DeadLetterPort.save()  @Transactional
@@ -397,15 +413,21 @@ ApplicationEventPublisher.publishEvent(NotificationEvent)
 
 ### 재시도 정책 (지수 백오프 + Jitter)
 
-최대 5회 재시도. 각 대기 시간에 0~30초 Jitter가 추가된다.
+기본 최대 3회 재시도. 각 대기 시간에 0~9초 Jitter가 추가된다.
 
-| 시도 | 기본 대기 시간 | 누적 |
+수강 신청·결제 직후 알림을 기대하는 사용자가 수분 내로 앱을 이탈할 수 있으므로,
+재시도 간격을 길게 가져가면 TTL(`expire_at`) 초과로 EXPIRED 처리될 가능성이 높다.
+빠른 재시도로 TTL 내 발송 성공률을 높이는 것을 우선한다.
+
+```
+next_retry_at = now + min(2^retryCount * 60초, 1800초) + random(0, 9초)
+```
+
+| 시도 | 기본 대기 시간 | 상한 |
 |------|------------|------|
-| 1회  | 1분        | ~1분  |
-| 2회  | 5분        | ~6분  |
-| 3회  | 10분       | ~16분 |
-| 4회  | 30분       | ~46분 |
-| 5회  | 60분       | ~106분 |
+| 1회  | 1분        | 30분 |
+| 2회  | 2분        | 30분 |
+| 3회  | 4분        | 30분 |
 | 최종 실패 | DEAD_LETTER 보관 | — |
 
 > `expire_at` 초과 시 남은 재시도 횟수와 무관하게 EXPIRED 처리
