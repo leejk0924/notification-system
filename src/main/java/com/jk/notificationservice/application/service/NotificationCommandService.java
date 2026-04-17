@@ -41,6 +41,7 @@ public class NotificationCommandService implements RegisterNotificationUseCase {
                     null,
                     null                            // scheduledAt — referenceId로 조회 필요 (추후 구현)
             ));
+            log.info("알림 등록 완료. idempotencyKey={}", idempotencyKey);
         } catch (Exception e) {
             log.error("알림 등록 실패 — DEAD_LETTER 저장 시도. idempotencyKey={}", idempotencyKey, e);
             deadLetterPort.save(event, e.getMessage());
