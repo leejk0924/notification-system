@@ -7,7 +7,7 @@ import org.testcontainers.mysql.MySQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
 @TestConfiguration(proxyBeanMethods = false)
-class TestcontainersConfiguration {
+public class TestcontainersConfiguration {
     private static final DockerImageName MYSQL_IMAGE = DockerImageName.parse("mysql:8.4");
 
     @Bean
