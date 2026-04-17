@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS notification_requests
     max_retry_count   INT             NOT NULL DEFAULT 3,
     next_retry_at     DATETIME,
     sent_at           DATETIME,
-    failure_reason    TEXT,
+    last_failure_reason TEXT,
     is_read           TINYINT(1)      NOT NULL DEFAULT 0,
     read_at           DATETIME,
     version           BIGINT          NOT NULL DEFAULT 0,

@@ -21,7 +21,7 @@ public record NotificationResponse(
         LocalDateTime expireAt,
         int retryCount,
         int maxRetryCount,
-        String failureReason,
+        String lastFailureReason,
         boolean read,
         LocalDateTime sentAt,
         LocalDateTime createdAt
@@ -41,7 +41,7 @@ public record NotificationResponse(
                 domain.getExpireAt(),
                 domain.getRetryCount(),
                 domain.getMaxRetryCount(),
-                domain.getFailureReason(),
+                domain.getLastFailureReason(),
                 domain.isRead(),
                 domain.getSentAt(),
                 domain.getCreatedAt()

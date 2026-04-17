@@ -27,7 +27,7 @@ public class NotificationRequest {
     private int retryCount;
     private int maxRetryCount;
     private LocalDateTime nextRetryAt;
-    private String failureReason;
+    private String lastFailureReason;
     private boolean read;
     private LocalDateTime readAt;
     private LocalDateTime sentAt;
@@ -89,7 +89,7 @@ public class NotificationRequest {
             int retryCount,
             int maxRetryCount,
             LocalDateTime nextRetryAt,
-            String failureReason,
+            String lastFailureReason,
             boolean isRead,
             LocalDateTime readAt,
             LocalDateTime sentAt,
@@ -101,7 +101,7 @@ public class NotificationRequest {
                 id, recipientId, notificationType, channel, status,
                 idempotencyKey, referenceType, referenceId, payload,
                 scheduledAt, expireAt, retryCount, maxRetryCount,
-                nextRetryAt, failureReason, isRead, readAt, sentAt,
+                nextRetryAt, lastFailureReason, isRead, readAt, sentAt,
                 version, createdAt, updatedAt
         );
     }
@@ -133,7 +133,7 @@ public class NotificationRequest {
     public void markAsPermanentlyFailed(String reason) {
         validateStatus(NotificationStatus.PROCESSING);
         this.status = NotificationStatus.FAILED;
-        this.failureReason = reason;
+        this.lastFailureReason = reason;
     }
 
     // 상태 전이: 유효 기한 초과
@@ -158,11 +158,11 @@ public class NotificationRequest {
     // 일시적 실패 처리 — 재시도 가능 여부에 따라 PENDING 또는 DEAD_LETTER로 자동 분기
     public void handleFailure(String reason, LocalDateTime nextRetryAt) {
         validateStatus(NotificationStatus.PROCESSING);
+        this.lastFailureReason = reason;
         if (isRetryable()) {
             scheduleRetry(nextRetryAt);
         } else {
             this.status = NotificationStatus.DEAD_LETTER;
-            this.failureReason = reason;
         }
     }
 

@@ -90,6 +90,7 @@ class NotificationRequestTest {
             assertThat(sut.getStatus()).isEqualTo(NotificationStatus.PENDING);
             assertThat(sut.getRetryCount()).isEqualTo(1);
             assertThat(sut.getNextRetryAt()).isEqualTo(nextRetryAt);
+            assertThat(sut.getLastFailureReason()).isEqualTo("일시 오류");
         }
 
         @Test
@@ -100,7 +101,7 @@ class NotificationRequestTest {
             sut.handleFailure("최종 실패", null);
 
             assertThat(sut.getStatus()).isEqualTo(NotificationStatus.DEAD_LETTER);
-            assertThat(sut.getFailureReason()).isEqualTo("최종 실패");
+            assertThat(sut.getLastFailureReason()).isEqualTo("최종 실패");
         }
     }
 
@@ -115,6 +116,19 @@ class NotificationRequestTest {
 
             assertThatThrownBy(sut::markAsProcessing)
                     .isInstanceOf(NotificationException.class);
+        }
+
+        @Test
+        @DisplayName("markAsSent 호출 시 SENT로 전이하고 lastFailureReason을 유지한다")
+        void markAsSent_SENT전이_lastFailureReason_유지() {
+            NotificationRequest sut = createProcessing(1, 3);
+            ReflectionTestUtils.setField(sut, "lastFailureReason", "이전 실패 사유");
+
+            sut.markAsSent();
+
+            assertThat(sut.getStatus()).isEqualTo(NotificationStatus.SENT);
+            assertThat(sut.getSentAt()).isNotNull();
+            assertThat(sut.getLastFailureReason()).isEqualTo("이전 실패 사유");
         }
 
         @Test

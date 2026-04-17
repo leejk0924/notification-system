@@ -27,7 +27,7 @@ public class NotificationRequestMapper {
                 entity.getRetryCount(),
                 entity.getMaxRetryCount(),
                 entity.getNextRetryAt(),
-                entity.getFailureReason(),
+                entity.getLastFailureReason(),
                 entity.isRead(),
                 entity.getReadAt(),
                 entity.getSentAt(),
@@ -57,7 +57,7 @@ public class NotificationRequestMapper {
                 .retryCount(domain.getRetryCount())
                 .maxRetryCount(domain.getMaxRetryCount())
                 .nextRetryAt(domain.getNextRetryAt())
-                .failureReason(domain.getFailureReason())
+                .lastFailureReason(domain.getLastFailureReason())
                 .isRead(domain.isRead())
                 .readAt(domain.getReadAt())
                 .sentAt(domain.getSentAt())

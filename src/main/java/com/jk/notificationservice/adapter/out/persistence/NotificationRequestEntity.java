@@ -57,7 +57,7 @@ public class NotificationRequestEntity extends BaseAudit {
     private LocalDateTime nextRetryAt;
 
     @Column(columnDefinition = "TEXT")
-    private String failureReason;
+    private String lastFailureReason;
 
     @Column(nullable = false)
     private boolean isRead;
