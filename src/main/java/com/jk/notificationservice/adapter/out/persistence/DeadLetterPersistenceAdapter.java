@@ -4,7 +4,6 @@ import com.jk.notificationservice.application.port.out.DeadLetterPort;
 import com.jk.notificationservice.domain.event.NotificationEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Component
@@ -14,7 +13,7 @@ public class DeadLetterPersistenceAdapter implements DeadLetterPort {
     private final RegistrationFailureJpaRepository jpaRepository;
 
     @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public void save(NotificationEvent event, String failureReason) {
         jpaRepository.save(RegistrationFailureEntity.builder()
                 .recipientId(event.recipientId())

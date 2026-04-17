@@ -35,10 +35,12 @@ class NotificationRequestTest {
         }
 
         private NotificationRequest create(LocalDateTime expireAt) {
-            return NotificationRequest.create(
+            NotificationRequest request = NotificationRequest.create(
                     1L, ENROLLMENT_COMPLETED, EMAIL, "test-key", 3,
-                    null, null, null, null, expireAt
+                    null, null, null, null
             );
+            ReflectionTestUtils.setField(request, "expireAt", expireAt);
+            return request;
         }
     }
 
@@ -66,7 +68,7 @@ class NotificationRequestTest {
         private NotificationRequest createWithRetryCount(int retryCount) {
             NotificationRequest request = NotificationRequest.create(
                     1L, ENROLLMENT_COMPLETED, EMAIL, "test-key", 3,
-                    null, null, null, null, null
+                    null, null, null, null
             );
             ReflectionTestUtils.setField(request, "retryCount", retryCount);
             return request;
@@ -120,7 +122,7 @@ class NotificationRequestTest {
         void markAsSent_PROCESSING_아닌_상태에서_예외() {
             NotificationRequest sut = NotificationRequest.create(
                     1L, ENROLLMENT_COMPLETED, EMAIL, "test-key", 3,
-                    null, null, null, null, null
+                    null, null, null, null
             );
 
             assertThatThrownBy(sut::markAsSent)
@@ -147,7 +149,7 @@ class NotificationRequestTest {
         void markAsRead_IN_APP이면_읽음처리() {
             NotificationRequest sut = NotificationRequest.create(
                     1L, ENROLLMENT_COMPLETED, IN_APP, "test-key", 3,
-                    null, null, null, null, null
+                    null, null, null, null
             );
 
             sut.markAsRead();
@@ -161,7 +163,7 @@ class NotificationRequestTest {
         void markAsRead_EMAIL이면_읽음처리_안됨() {
             NotificationRequest sut = NotificationRequest.create(
                     1L, ENROLLMENT_COMPLETED, EMAIL, "test-key", 3,
-                    null, null, null, null, null
+                    null, null, null, null
             );
 
             sut.markAsRead();
@@ -175,7 +177,7 @@ class NotificationRequestTest {
     private NotificationRequest createProcessing(int retryCount, int maxRetryCount) {
         NotificationRequest request = NotificationRequest.create(
                 1L, ENROLLMENT_COMPLETED, EMAIL, "test-key", maxRetryCount,
-                null, null, null, null, null
+                null, null, null, null
         );
         ReflectionTestUtils.setField(request, "retryCount", retryCount);
         ReflectionTestUtils.setField(request, "status", PROCESSING);

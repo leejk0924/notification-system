@@ -4,15 +4,10 @@ import com.jk.notificationservice.application.port.in.RegisterNotificationUseCas
 import com.jk.notificationservice.application.port.out.DeadLetterPort;
 import com.jk.notificationservice.application.port.out.NotificationRepository;
 import com.jk.notificationservice.domain.NotificationRequest;
-import com.jk.notificationservice.domain.NotificationType;
 import com.jk.notificationservice.domain.event.NotificationEvent;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.aspectj.util.Reflection;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import java.time.LocalDateTime;
 
 @Slf4j
 @Service
@@ -22,10 +17,10 @@ public class NotificationCommandService implements RegisterNotificationUseCase {
     private static final int DEFAULT_MAX_RETRY_COUNT = 3;
 
     private final NotificationRepository notificationRepository;
+    private final NotificationSaveFacade notificationSaveFacade;
     private final DeadLetterPort deadLetterPort;
 
     @Override
-    @Transactional
     public void register(NotificationEvent event) {
         String idempotencyKey = buildIdempotencyKey(event);
 
@@ -35,7 +30,7 @@ public class NotificationCommandService implements RegisterNotificationUseCase {
         }
 
         try {
-            notificationRepository.save(NotificationRequest.create(
+            notificationSaveFacade.save(NotificationRequest.create(
                     event.recipientId(),
                     event.notificationType(),
                     event.channel(),
@@ -44,8 +39,7 @@ public class NotificationCommandService implements RegisterNotificationUseCase {
                     event.referenceType(),
                     event.referenceId(),
                     null,
-                    null,                           // scheduledAt — referenceId로 조회 필요 (추후 구현)
-                    calculateExpireAt(event.notificationType())
+                    null                            // scheduledAt — referenceId로 조회 필요 (추후 구현)
             ));
         } catch (Exception e) {
             log.error("알림 등록 실패 — DEAD_LETTER 저장 시도. idempotencyKey={}", idempotencyKey, e);
@@ -61,14 +55,5 @@ public class NotificationCommandService implements RegisterNotificationUseCase {
                 event.recipientId(),
                 event.channel()
         );
-    }
-
-    private LocalDateTime calculateExpireAt(NotificationType type) {
-        LocalDateTime now = LocalDateTime.now();
-        return switch (type) {
-            case PAYMENT_CONFIRMED -> now.plusHours(12);
-            case COURSE_START_REMINDER -> now.plusHours(2);
-            default -> now.plusHours(24);
-        };
     }
 }

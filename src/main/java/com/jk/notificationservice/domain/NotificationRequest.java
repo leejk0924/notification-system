@@ -45,8 +45,7 @@ public class NotificationRequest {
             String referenceType,
             Long referenceId,
             String payload,
-            LocalDateTime scheduledAt,
-            LocalDateTime expireAt
+            LocalDateTime scheduledAt
     ) {
         NotificationRequest request = new NotificationRequest();
         request.recipientId = recipientId;
@@ -58,11 +57,19 @@ public class NotificationRequest {
         request.referenceId = referenceId;
         request.payload = payload;
         request.scheduledAt = scheduledAt;
-        request.expireAt = expireAt;
+        request.expireAt = calculateExpireAt(notificationType);
         request.status = NotificationStatus.PENDING;
         request.retryCount = 0;
         request.read = false;
         return request;
+    }
+
+    private static LocalDateTime calculateExpireAt(NotificationType type) {
+        return switch (type) {
+            case PAYMENT_CONFIRMED     -> LocalDateTime.now().plusHours(12);
+            case COURSE_START_REMINDER -> LocalDateTime.now().plusHours(2);
+            default                    -> LocalDateTime.now().plusHours(24);
+        };
     }
 
 

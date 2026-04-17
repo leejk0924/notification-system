@@ -28,9 +28,7 @@ import static com.jk.notificationservice.domain.NotificationChannel.IN_APP;
 import static com.jk.notificationservice.domain.NotificationType.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.then;
-import static org.mockito.Mockito.*;
+import static org.mockito.BDDMockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class NotificationCommandServiceTest {
@@ -40,6 +38,9 @@ class NotificationCommandServiceTest {
 
     @Mock
     private NotificationRepository notificationRepository;
+
+    @Mock
+    private NotificationSaveFacade notificationSaveFacade;
 
     @Mock
     private DeadLetterPort deadLetterPort;
@@ -54,14 +55,13 @@ class NotificationCommandServiceTest {
             // given
             NotificationEvent event = createEvent(ENROLLMENT_COMPLETED, EMAIL);
             given(notificationRepository.findByIdempotencyKey(any())).willReturn(Optional.empty());
-            given(notificationRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
 
             // when
             sut.register(event);
 
             // then
             ArgumentCaptor<NotificationRequest> captor = ArgumentCaptor.forClass(NotificationRequest.class);
-            then(notificationRepository).should().save(captor.capture());
+            then(notificationSaveFacade).should().save(captor.capture());
             NotificationRequest request = captor.getValue();
 
             assertThat(request.getStatus()).isEqualTo(NotificationStatus.PENDING);
@@ -80,7 +80,7 @@ class NotificationCommandServiceTest {
             sut.register(event);
 
             // then
-            then(notificationRepository).should(never()).save(any());
+            then(notificationSaveFacade).should(never()).save(any());
             then(deadLetterPort).should(never()).save(any(), any());
         }
 
@@ -90,7 +90,6 @@ class NotificationCommandServiceTest {
             // given
             NotificationEvent event = createEvent(ENROLLMENT_COMPLETED, EMAIL);
             given(notificationRepository.findByIdempotencyKey(any())).willReturn(Optional.empty());
-            given(notificationRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
 
             // when
             sut.register(event);
@@ -100,7 +99,7 @@ class NotificationCommandServiceTest {
             then(notificationRepository).should().findByIdempotencyKey(expectedKey);
 
             ArgumentCaptor<NotificationRequest> captor = ArgumentCaptor.forClass(NotificationRequest.class);
-            then(notificationRepository).should().save(captor.capture());
+            then(notificationSaveFacade).should().save(captor.capture());
             assertThat(captor.getValue().getIdempotencyKey()).isEqualTo(expectedKey);
         }
 
@@ -109,9 +108,8 @@ class NotificationCommandServiceTest {
         void register_저장실패_DeadLetter저장() {
             // given
             NotificationEvent event = createEvent(ENROLLMENT_COMPLETED, EMAIL);
-
             given(notificationRepository.findByIdempotencyKey(any())).willReturn(Optional.empty());
-            given(notificationRepository.save(any())).willThrow(new RuntimeException("DB 오류"));
+            willThrow(new RuntimeException("DB 오류")).given(notificationSaveFacade).save(any());
 
             // when
             sut.register(event);
@@ -136,13 +134,13 @@ class NotificationCommandServiceTest {
             // given
             NotificationEvent event = createEvent(ENROLLMENT_COMPLETED, EMAIL);
             given(notificationRepository.findByIdempotencyKey(any())).willReturn(Optional.empty());
-            given(notificationRepository.save(any())).willThrow(new RuntimeException("DB 오류"));
+            willThrow(new RuntimeException("DB 오류")).given(notificationSaveFacade).save(any());
 
             // when
             sut.register(event);
 
             // then
-            then(notificationRepository).should(times(1)).save(any());
+            then(notificationSaveFacade).should(times(1)).save(any());
         }
     }
 
@@ -157,22 +155,15 @@ class NotificationCommandServiceTest {
             // given
             NotificationEvent event = createEvent(type, EMAIL);
             given(notificationRepository.findByIdempotencyKey(any())).willReturn(Optional.empty());
-            given(notificationRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
 
             // when
-            LocalDateTime before = LocalDateTime.now()
-                    .plusHours(expectedHours)
-                    .minusSeconds(5);
-
+            LocalDateTime before = LocalDateTime.now().plusHours(expectedHours).minusSeconds(5);
             sut.register(event);
-
-            LocalDateTime after = LocalDateTime.now()
-                    .plusHours(expectedHours)
-                    .plusSeconds(5);
+            LocalDateTime after = LocalDateTime.now().plusHours(expectedHours).plusSeconds(5);
 
             // then
             ArgumentCaptor<NotificationRequest> captor = ArgumentCaptor.forClass(NotificationRequest.class);
-            then(notificationRepository).should().save(captor.capture());
+            then(notificationSaveFacade).should().save(captor.capture());
             assertThat(captor.getValue().getExpireAt()).isBetween(before, after);
         }
 
@@ -197,7 +188,6 @@ class NotificationCommandServiceTest {
             NotificationEvent emailEvent = createEvent(ENROLLMENT_COMPLETED, EMAIL);
             NotificationEvent inAppEvent = createEvent(ENROLLMENT_COMPLETED, IN_APP);
             given(notificationRepository.findByIdempotencyKey(any())).willReturn(Optional.empty());
-            given(notificationRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
 
             // when
             sut.register(emailEvent);
@@ -218,10 +208,7 @@ class NotificationCommandServiceTest {
             // given
             NotificationEvent course100Event = new NotificationEvent(1L, ENROLLMENT_COMPLETED, EMAIL, "ENROLLMENT", 100L);
             NotificationEvent course200Event = new NotificationEvent(1L, ENROLLMENT_COMPLETED, EMAIL, "ENROLLMENT", 200L);
-            given(notificationRepository.findByIdempotencyKey(any()))
-                    .willReturn(Optional.empty());
-            given(notificationRepository.save(any()))
-                    .willAnswer(inv -> inv.getArgument(0));
+            given(notificationRepository.findByIdempotencyKey(any())).willReturn(Optional.empty());
 
             // when
             sut.register(course100Event);
