@@ -2,6 +2,7 @@ package com.jk.notificationservice.application.service;
 
 import com.jk.notificationservice.application.port.out.NotificationRepository;
 import com.jk.notificationservice.domain.NotificationRequest;
+import com.jk.notificationservice.domain.NotificationStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,18 +26,17 @@ public class NotificationFacade {
     @Transactional
     public List<NotificationRequest> claimPendingForDispatch(LocalDateTime now, int limit) {
         List<NotificationRequest> pending = notificationRepository.findPendingForDispatch(now, limit);
-
-        List<NotificationRequest> claimed = new ArrayList<>();
-        for (NotificationRequest request : pending) {
-            if (request.isExpired(now)) {
-                request.markAsExpired();
-                notificationRepository.save(request);
-            } else {
-                request.markAsProcessing();
-                claimed.add(notificationRepository.save(request));
-            }
-        }
-        return claimed;
+        return pending.stream()
+                .map(request -> {
+                    if (request.isExpired(now)) {
+                        request.markAsExpired();
+                    } else {
+                        request.markAsProcessing();
+                    }
+                    return notificationRepository.save(request);
+                })
+                .filter(saved -> saved.getStatus() == NotificationStatus.PROCESSING)
+                .toList();
     }
 
     @Transactional(readOnly = true)
