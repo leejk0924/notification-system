@@ -3,7 +3,6 @@ package com.jk.notificationservice.adapter.out.persistence;
 import com.jk.notificationservice.adapter.out.persistence.mapper.NotificationRequestMapper;
 import com.jk.notificationservice.application.port.out.NotificationRepository;
 import com.jk.notificationservice.domain.NotificationRequest;
-import com.jk.notificationservice.domain.NotificationStatus;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -45,7 +44,7 @@ public class NotificationPersistenceAdapter implements NotificationRepository {
     @Override
     public List<NotificationRequest> findPendingForDispatch(LocalDateTime now, int limit) {
         return jpaRepository
-                .findPendingForDispatch(NotificationStatus.PENDING, now, PageRequest.of(0, limit))
+                .findPendingForDispatch(now, limit)
                 .stream().map(mapper::toDomain).toList();
     }
 

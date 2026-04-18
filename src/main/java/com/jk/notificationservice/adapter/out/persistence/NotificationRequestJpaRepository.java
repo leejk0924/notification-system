@@ -22,14 +22,15 @@ public interface NotificationRequestJpaRepository extends JpaRepository<Notifica
             Pageable pageable
     );
 
-    @Query("SELECT e FROM NotificationRequestEntity e " +
-           "WHERE e.status = :status " +
-           "AND (e.nextRetryAt IS NULL OR e.nextRetryAt <= :now) " +
-           "ORDER BY e.nextRetryAt ASC")
+    @Query(value = "SELECT * FROM notification_requests " +
+                   "WHERE status = 'PENDING' AND (next_retry_at IS NULL OR next_retry_at <= :now) " +
+                   "ORDER BY next_retry_at ASC " +
+                   "LIMIT :limit " +
+                   "FOR UPDATE SKIP LOCKED",
+           nativeQuery = true)
     List<NotificationRequestEntity> findPendingForDispatch(
-            @Param("status") NotificationStatus status,
             @Param("now") LocalDateTime now,
-            Pageable pageable
+            @Param("limit") int limit
     );
 
     @Query("SELECT e FROM NotificationRequestEntity e " +

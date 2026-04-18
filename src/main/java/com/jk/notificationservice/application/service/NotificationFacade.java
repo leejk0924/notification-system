@@ -7,6 +7,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
@@ -21,9 +22,21 @@ public class NotificationFacade {
         return notificationRepository.findByIdempotencyKey(idempotencyKey);
     }
 
-    @Transactional(readOnly = true)
-    public List<NotificationRequest> findPendingForDispatch(LocalDateTime now, int limit) {
-        return notificationRepository.findPendingForDispatch(now, limit);
+    @Transactional
+    public List<NotificationRequest> claimPendingForDispatch(LocalDateTime now, int limit) {
+        List<NotificationRequest> pending = notificationRepository.findPendingForDispatch(now, limit);
+
+        List<NotificationRequest> claimed = new ArrayList<>();
+        for (NotificationRequest request : pending) {
+            if (request.isExpired(now)) {
+                request.markAsExpired();
+                notificationRepository.save(request);
+            } else {
+                request.markAsProcessing();
+                claimed.add(notificationRepository.save(request));
+            }
+        }
+        return claimed;
     }
 
     @Transactional(readOnly = true)
