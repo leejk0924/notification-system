@@ -10,15 +10,16 @@
  
 ## 기술 스택
 
-| 구분        | 기술                               | 버전    |
-|------------|----------------------------------|--------|
-| Language   | Java                             | 21     |
-| Framework  | Spring Boot                      | 4.0.6  |
-| ORM        | Spring Data JPA / Hibernate      |        |
-| Database   | MySQL                            | 8.4    |
-| 비동기 처리  | DB 기반 큐 (SKIP LOCKED)           |        |
-| 테스트      | JUnit 5, Testcontainers, AssertJ |        |
-| 인프라      | Docker / Docker Compose          |        |
+| 구분        | 기술                               | 버전    | 용도 |
+|------------|----------------------------------|--------|------|
+| Language   | Java                             | 21     | |
+| Framework  | Spring Boot                      | 4.0.6  | |
+| ORM        | Spring Data JPA / Hibernate      |        | |
+| Database   | MySQL                            | 8.4    | |
+| 비동기 처리  | DB 기반 큐 (SKIP LOCKED)           |        | PENDING 알림을 다중 워커가 중복 없이 분산 처리. `SELECT ... FOR UPDATE SKIP LOCKED`로 각 워커가 서로 다른 행을 점유하고, 같은 트랜잭션 내에서 PROCESSING으로 상태 전이 |
+| 낙관적 락   | JPA `@Version`                   |        | 읽음 처리 동시 요청 시 최초 1건만 커밋, 충돌 시 최신 상태 재조회로 멱등 응답 |
+| 테스트      | JUnit 5, Testcontainers, AssertJ |        | |
+| 인프라      | Docker / Docker Compose          |        | |
 
 > 메시지 브로커(Kafka 등) 도입은 추후 계획
 
@@ -30,94 +31,31 @@
 ```
 com.jk.notificationservice
 │
-├── domain                                        # 순수 도메인 (외부 의존 없음)
-│   ├── event
-│   │   └── NotificationEvent.java               # 알림 발행 이벤트 (record)
-│   ├── NotificationRequest.java                  # 도메인 모델 (TTL 계산 포함)
-│   ├── NotificationStatus.java                   # Enum
-│   ├── NotificationChannel.java                  # Enum
-│   └── NotificationType.java                     # Enum
+├── domain                  # 순수 도메인 모델 (외부 의존 없음)
 │
-├── application                                   # 유스케이스 & 포트 정의
+├── application
 │   ├── port
-│   │   ├── in                                   # 인바운드 포트 (유스케이스 인터페이스)
-│   │   │   ├── RegisterNotificationUseCase.java
-│   │   │   ├── DispatchNotificationUseCase.java
-│   │   │   ├── RecoverStuckNotificationUseCase.java
-│   │   │   ├── QueryNotificationUseCase.java
-│   │   │   └── MarkNotificationAsReadUseCase.java
-│   │   └── out                                  # 아웃바운드 포트
-│   │       ├── NotificationRepository.java
-│   │       ├── NotificationSendPort.java        # 실제 발송 추상화
-│   │       ├── RetryPolicyPort.java             # 재시도 간격 계산 추상화
-│   │       └── DeadLetterPort.java              # 등록 실패 저장 추상화
-│   └── service
-│       ├── NotificationCommandService.java       # RegisterNotificationUseCase 구현
-│       ├── NotificationQueryService.java         # QueryNotificationUseCase 구현
-│       ├── NotificationDispatchService.java      # DispatchNotificationUseCase 구현
-│       ├── NotificationRecoveryService.java      # RecoverStuckNotificationUseCase 구현
-│       ├── NotificationReadCommandService.java   # MarkNotificationAsReadUseCase 구현 (낙관적 락 기반 멱등 처리)
-│       └── NotificationFacade.java              # 저장·조회 트랜잭션 경계 분리 (Facade)
+│   │   ├── in              # 인바운드 포트 (유스케이스 인터페이스)
+│   │   └── out             # 아웃바운드 포트 (Repository, SendPort, RetryPolicyPort 등)
+│   └── service             # 유스케이스 구현체 및 Facade
 │
 ├── adapter
-│   ├── in                                        # 인바운드 어댑터 (외부 → 앱)
-│   │   ├── event
-│   │   │   └── NotificationEventListener.java   # AFTER_COMMIT + @Async 이벤트 처리
-│   │   ├── scheduler
-│   │   │   ├── NotificationDispatchScheduler.java       # fixedDelay 폴링 스케줄러
-│   │   │   └── ProcessingStuckRecoveryScheduler.java    # PROCESSING stuck 감지 및 복구 스케줄러
-│   │   └── web
-│   │       ├── NotificationController.java       # 알림 조회 API
-│   │       ├── DummyEventController.java         # 이벤트 발행 테스트용 API
-│   │       └── dto
-│   │           ├── EnrollmentCompletedRequest.java
-│   │           ├── PaymentConfirmedRequest.java
-│   │           ├── CourseStartReminderRequest.java
-│   │           └── NotificationResponse.java
-│   └── out                                       # 아웃바운드 어댑터 (앱 → 외부)
-│       ├── persistence
-│       │   ├── NotificationRequestEntity.java    # JPA Entity
-│       │   ├── NotificationRequestJpaRepository.java
-│       │   ├── NotificationPersistenceAdapter.java   # NotificationRepository 구현
-│       │   ├── RegistrationFailureEntity.java        # 알림 등록 실패 JPA Entity
-│       │   ├── RegistrationFailureJpaRepository.java
-│       │   ├── DeadLetterPersistenceAdapter.java     # DeadLetterPort 구현
-│       │   └── mapper
-│       │       └── NotificationRequestMapper.java    # 도메인↔엔티티 변환
-│       ├── policy
-│       │   └── ExponentialBackoffRetryPolicyAdapter.java  # RetryPolicyPort 구현
-│       └── send
-│           ├── ChannelSender.java                   # 채널별 발송 인터페이스
-│           ├── NotificationSendAdapter.java         # NotificationSendPort 구현 (채널별 라우팅)
-│           ├── MockEmailChannelSender.java          # EMAIL Mock 구현체
-│           └── MockInAppChannelSender.java          # IN_APP Mock 구현체
+│   ├── in
+│   │   ├── event           # 도메인 이벤트 리스너 (AFTER_COMMIT + @Async)
+│   │   ├── scheduler       # 발송 폴링 / stuck 복구 스케줄러
+│   │   └── web             # REST API 컨트롤러 및 DTO
+│   └── out
+│       ├── persistence     # JPA 엔티티, Repository, Mapper
+│       ├── policy          # 지수 백오프 재시도 정책
+│       └── send            # 채널별 발송 구현체 (EMAIL, IN_APP Mock)
 │
-├── config
-│   ├── AsyncConfig.java                         # 스레드 풀, MDC 전파, Graceful Shutdown
-│   ├── SchedulerConfig.java                     # @EnableScheduling, @ConfigurationPropertiesScan
-│   └── NotificationSchedulerProperties.java     # 스케줄러 설정값 (dispatchDelay, stuckThreshold, stuckRecoveryDelay)
+├── config                  # 비동기, 스케줄러 설정
 │
 └── common
-    ├── exception
-    │   ├── ErrorCode.java                       # 에러코드 인터페이스
-    │   ├── NotificationErrorCode.java           # 에러코드 enum (NOT_FOUND / ACCESS_DENIED / INVALID_STATE / SEND_FAILURE)
-    │   ├── NotificationException.java           # 단일 도메인 예외 클래스 (ErrorCode 보유)
-    │   └── ErrorResponse.java                   # API 에러 응답 DTO
-    └── ApiControllerAdvice.java                 # @RestControllerAdvice — NotificationException → HTTP 응답 변환
+    ├── exception           # ErrorCode 인터페이스, NotificationErrorCode enum, NotificationException
+    └── ApiControllerAdvice # @RestControllerAdvice — API 예외 응답 변환
 
-**메시지 브로커 전환 시 변경 범위**
-
-```
-# 현재 (DB 기반 큐)
-adapter/in/worker/NotificationWorker.java         ← DB 폴링
-adapter/out/sender/EmailSender.java               ← 직접 발송
-
-# Kafka 전환 시 추가/교체
-adapter/in/messaging/NotificationConsumer.java    ← Kafka Consumer
-adapter/out/messaging/NotificationProducer.java   ← Kafka Producer
-```
-
-`domain` / `application` 레이어는 변경 없음
+메시지 브로커(Kafka 등) 전환 시 `adapter/in/scheduler`, `adapter/out/send` 구현체만 교체하면 되며, `domain` / `application` 레이어는 변경 없음
 
 ## 실행 방법
 
@@ -141,13 +79,168 @@ java -jar build/libs/notification-service-0.0.1-SNAPSHOT.jar --spring.profiles.a
 
 ## API 목록 및 예시
 
-### 알림 조회 / 읽음 처리
+아래 흐름대로 실행하면 알림 등록 → 발송 → 조회 → 읽음 처리까지 전체 동작을 확인할 수 있다.
 
-| Method | URL | 설명 |
-|--------|-----|------|
-| `GET` | `/api/notifications/{id}` | 단건 조회 (상태, 실패 사유 포함) |
-| `GET` | `/api/notifications` | 수신자별 목록 조회 (읽음 필터, 페이징) |
-| `PUT` | `/api/notifications/{id}/read` | 알림 읽음 처리 (IN_APP + SENT 상태만 허용, 멱등) |
+### Step 1. 이벤트 발행으로 알림 등록
+
+> 실제 서비스에서는 비즈니스 레이어가 이벤트를 발행한다. 아래 API는 개발/테스트 목적으로만 사용한다.
+
+```bash
+# 수강 신청 완료 알림 (IN_APP)
+curl -X POST http://localhost:8080/api/dummy/enrollment-completed \
+  -H "Content-Type: application/json" \
+  -d '{"recipientId": 1, "enrollmentId": 100, "channel": "IN_APP"}'
+
+# 결제 확정 알림 (EMAIL)
+curl -X POST http://localhost:8080/api/dummy/payment-confirmed \
+  -H "Content-Type: application/json" \
+  -d '{"recipientId": 1, "paymentId": 200, "channel": "EMAIL"}'
+
+# 강의 시작 D-1 알림 (IN_APP)
+curl -X POST http://localhost:8080/api/dummy/course-start-reminder \
+  -H "Content-Type: application/json" \
+  -d '{"recipientId": 1, "courseId": 300, "channel": "IN_APP"}'
+```
+
+모든 더미 API는 `202 Accepted`를 반환하고, 알림 등록 및 발송은 비동기로 진행된다.
+
+### Step 2. 알림 조회
+
+```bash
+# 단건 조회
+curl http://localhost:8080/api/notifications/1
+
+# 수신자별 목록 조회 (전체)
+curl http://localhost:8080/api/notifications \
+  -H "X-User-Id: 1"
+
+# 읽지 않은 알림만 조회
+curl "http://localhost:8080/api/notifications?read=false" \
+  -H "X-User-Id: 1"
+```
+
+**응답 예시**
+
+```json
+{
+  "id": 1,
+  "recipientId": 1,
+  "notificationType": "ENROLLMENT_COMPLETED",
+  "channel": "IN_APP",
+  "status": "SENT",
+  "retryCount": 0,
+  "maxRetryCount": 3,
+  "lastFailureReason": null,
+  "read": false,
+  "readAt": null,
+  "sentAt": "2026-04-18T10:01:23",
+  "createdAt": "2026-04-18T10:01:20"
+}
+```
+
+### Step 3. 읽음 처리
+
+이메일·SMS 채널은 발송 후 사용자가 실제로 읽었는지 확인할 수단이 없다. 읽음 처리는 앱 내에서 수신 여부를 직접 추적할 수 있는 IN_APP 채널에서만 의미가 있으므로, **IN_APP 채널이고 SENT 상태인 알림만** 읽음 처리된다.
+
+동시에 요청이 와도 최초 1건만 처리되고 나머지는 멱등하게 응답한다.
+
+```bash
+curl -X PUT http://localhost:8080/api/notifications/1/read \
+  -H "X-User-Id: 1"
+```
+
+**응답 예시**
+
+```json
+{
+  "id": 1,
+  "recipientId": 1,
+  "notificationType": "ENROLLMENT_COMPLETED",
+  "channel": "IN_APP",
+  "status": "SENT",
+  "read": true,
+  "readAt": "2026-04-18T10:05:00",
+  "sentAt": "2026-04-18T10:01:23",
+  "createdAt": "2026-04-18T10:01:20"
+}
+```
+
+### API 명세
+
+---
+
+#### `GET /api/notifications/{id}` — 알림 단건 조회
+
+| 항목 | 내용 |
+|------|------|
+| Path | `id` — 알림 ID |
+| 응답 | `200 OK` — NotificationResponse |
+| 오류 | `404` 존재하지 않는 ID |
+
+---
+
+#### `GET /api/notifications` — 수신자별 목록 조회
+
+| 항목 | 내용 |
+|------|------|
+| Header | `X-User-Id` (필수) — 수신자 ID |
+| Query | `read` — `true` / `false` / 생략(전체) |
+| Query | `page`, `size`, `sort` — 페이징 (기본: size=20, sort=createdAt) |
+| 응답 | `200 OK` — `Page<NotificationResponse>` |
+
+---
+
+#### `PUT /api/notifications/{id}/read` — 읽음 처리
+
+| 항목 | 내용 |
+|------|------|
+| Path | `id` — 알림 ID |
+| Header | `X-User-Id` (필수) — 수신자 ID |
+| 응답 | `200 OK` — NotificationResponse (`read: true`, `readAt` 포함) |
+| 오류 | `404` 존재하지 않는 ID / `403` 다른 수신자 / `409` SENT 아닌 상태 |
+| 멱등 | 이미 읽음 상태이면 save 없이 현재 상태 그대로 반환 |
+
+---
+
+#### `POST /api/dummy/enrollment-completed` — 수강 신청 완료 이벤트 발행
+
+| 항목 | 내용 |
+|------|------|
+| Body | `recipientId` (필수), `enrollmentId` (필수), `channel` — `EMAIL` / `IN_APP` (필수) |
+| 응답 | `202 Accepted` (응답 바디 없음) |
+
+---
+
+#### `POST /api/dummy/payment-confirmed` — 결제 확정 이벤트 발행
+
+| 항목 | 내용 |
+|------|------|
+| Body | `recipientId` (필수), `paymentId` (필수), `channel` — `EMAIL` / `IN_APP` (필수) |
+| 응답 | `202 Accepted` (응답 바디 없음) |
+
+---
+
+#### `POST /api/dummy/course-start-reminder` — 강의 시작 D-1 이벤트 발행
+
+| 항목 | 내용 |
+|------|------|
+| Body | `recipientId` (필수), `courseId` (필수), `channel` — `EMAIL` / `IN_APP` (필수) |
+| 응답 | `202 Accepted` (응답 바디 없음) |
+
+---
+
+**공통 에러 응답**
+
+```json
+{ "code": "NOT_FOUND", "message": "알림 요청을 찾을 수 없습니다. id: 99" }
+```
+
+| HTTP 상태 | code | 발생 조건 |
+|-----------|------|----------|
+| `404` | `NOT_FOUND` | 존재하지 않는 알림 ID |
+| `403` | `ACCESS_DENIED` | 다른 수신자의 알림 접근 |
+| `409` | `INVALID_STATE` | SENT 아닌 상태에서 읽음 처리 시도 |
+| `POST` | `/api/dummy/course-start-reminder` | 강의 시작 알림 이벤트 발행 (테스트용) |
 
 **목록 조회 파라미터**
 
@@ -156,18 +249,6 @@ java -jar build/libs/notification-service-0.0.1-SNAPSHOT.jar --spring.profiles.a
 | `X-User-Id` | Header | O | 수신자 ID |
 | `read` | Query | X | `true` / `false` / 생략(전체) |
 | `page`, `size`, `sort` | Query | X | 페이징 (기본: size=20, sort=createdAt) |
-
-### 이벤트 발행 (테스트용)
-
-> 실제 서비스에서는 비즈니스 레이어가 이벤트를 발행한다. 아래 API는 개발/테스트 목적으로만 사용한다.
-
-| Method | URL | 이벤트 |
-|--------|-----|--------|
-| `POST` | `/api/dummy/enrollment-completed` | 수강 신청 완료 |
-| `POST` | `/api/dummy/payment-confirmed` | 결제 확정 |
-| `POST` | `/api/dummy/course-start-reminder` | 강의 시작 알림 |
-
-모든 더미 API는 `202 Accepted`를 반환하고 알림 처리는 비동기로 진행된다.
 
 ## 데이터 모델 설명
 
@@ -195,6 +276,21 @@ java -jar build/libs/notification-service-0.0.1-SNAPSHOT.jar --spring.profiles.a
 | version | BIGINT | 0 | 낙관적 락 — 읽음 처리 전용 (상태 전이는 SKIP LOCKED로 분리) |
 | created_at | DATETIME | CURRENT_TIMESTAMP | |
 | updated_at | DATETIME | CURRENT_TIMESTAMP ON UPDATE | PROCESSING stuck 감지 스케줄러가 이 컬럼만으로 N분 이상 PROCESSING 여부 판단 |
+
+### 테이블 구조 — notification_registration_failures
+
+알림 등록 단계(DB 저장)에서 실패한 건을 별도로 보관한다. 발송 실패(`DEAD_LETTER`)와 성격이 달라 테이블을 분리했다.
+
+| 컬럼명 | 타입 | 기본값 | 설명 |
+|--------|------|--------|------|
+| id | BIGINT PK | AUTO_INCREMENT | |
+| recipient_id | BIGINT | | 수신자 사용자 ID |
+| notification_type | VARCHAR(64) | | 알림 유형 |
+| channel | VARCHAR(16) | | 발송 채널 (EMAIL / IN_APP) |
+| reference_type | VARCHAR(64) | NULL | 이벤트 원본 엔티티 유형 |
+| reference_id | BIGINT | NULL | 이벤트 원본 엔티티 ID |
+| failure_reason | TEXT | NULL | 등록 실패 원인 |
+| created_at | DATETIME | CURRENT_TIMESTAMP | |
 
 ### 알림 유형별 TTL
 
@@ -281,49 +377,48 @@ register() — 트랜잭션 없음
 `REQUIRES_NEW`를 사용하면 외부 트랜잭션이 커넥션을 잡은 채 내부 트랜잭션이 추가 커넥션을 요구해 동시 실패가 많을 경우 커넥션 풀이 고갈될 수 있다.
 
 ### 이벤트 리스너 트랜잭션 전략 — AFTER_COMMIT 채택
-알림 등록 이벤트 리스너는 `@TransactionalEventListener(phase = AFTER_COMMIT)`로 동작한다.
+- 알림 등록 이벤트 리스너는 `@TransactionalEventListener(phase = AFTER_COMMIT)`로 동작한다.
 
-**비즈니스 트랜잭션 미커밋 시 이벤트 미발행**
+- 비즈니스 트랜잭션 미커밋 시 이벤트 미발행 :
 비즈니스 트랜잭션(수강 신청, 결제 등)이 롤백되면 `AFTER_COMMIT` 리스너는 실행되지 않는다.
 알림이 발행되지 않는 것은 정상이며, 이는 비즈니스 레이어가 책임지는 영역이다.
 
-**비즈니스 커밋 후 알림 등록 실패 시 데이터 유실 가능성**
+- 비즈니스 커밋 후 알림 등록 실패 시 데이터 유실 가능성 : 
 비즈니스 트랜잭션이 커밋된 뒤 알림 DB 저장 중 서버가 다운되면 알림이 유실될 수 있다.
 이 경우 `DEAD_LETTER` 상태로 보관해 수동 재처리 경로를 확보하는 방향으로 대응한다.
 
-`BEFORE_COMMIT`을 사용하면 알림 저장 실패 시 비즈니스 트랜잭션까지 롤백되므로 채택하지 않았다.
+> `BEFORE_COMMIT`을 사용하면 알림 저장 실패 시 비즈니스 트랜잭션까지 롤백되므로 채택하지 않았다.
 알림 처리 실패가 수강 신청이나 결제 트랜잭션에 영향을 주어서는 안 된다는 요구사항을 우선했다.
 
 ### DB 기반 큐 (SKIP LOCKED)
-초기 트래픽 규모에서는 메시지 브로커 없이 MySQL만으로 워커 간 중복 처리를 방지할 수 있다.
+- 초기 트래픽 규모에서는 메시지 브로커 없이 MySQL만으로 워커 간 중복 처리를 방지할 수 있다.
 `SELECT ... FOR UPDATE SKIP LOCKED`로 각 워커가 서로 다른 행을 점유해 동시성을 확보한다.
-트래픽이 증가하면 메시지 브로커로 전환할 수 있도록 발송 처리 로직을 인터페이스로 분리해 둔다.
+트래픽이 증가하면 메시지 브로커로 전환할 수 있도록 발송 처리 로직을 인터페이스로 분리해 두었다.
 
 ### 지수 백오프 + Jitter 재시도
-네트워크 장애나 외부 서버 일시 오류는 즉시 재시도보다 간격을 늘려가며 재시도하는 것이 효과적이다.
+- 네트워크 장애나 외부 서버 일시 오류는 즉시 재시도보다 간격을 늘려가며 재시도하는 것이 효과적이다.
 다중 인스턴스 환경에서 같은 시각에 실패한 알림들이 동시에 재시도되어 외부 서비스에 부하가 몰리는 것을 막기 위해 Jitter(무작위 편차)를 추가한다.
 
 ```
 next_retry_at = now + (baseDelay * 2^retryCount) + random(0, 30초)
 ```
 
-최종 실패 건은 `DEAD_LETTER` 상태로 보관해 수동 재처리 경로를 확보한다.
+- 최종 실패 건은 `DEAD_LETTER` 상태로 보관해 수동 재처리 경로를 확보한다.
 `expire_at`을 초과한 알림은 재시도 없이 `EXPIRED` 처리한다.
 
 ### 멱등성 키 + UNIQUE 제약
-동일 이벤트가 중복 인입되더라도 DB UNIQUE 제약으로 중복 발송을 원천 차단한다.
+- 동일 이벤트가 중복 인입되더라도 DB UNIQUE 제약으로 중복 발송을 원천 차단한다.
 
-멱등성 키 형식은 `{notificationType}:{referenceType}:{referenceId}:{recipientId}:{channel}`이며, 현재 최대 수십 자 수준이다.
+- 멱등성 키 형식은 `{notificationType}:{referenceType}:{referenceId}:{recipientId}:{channel}`이며, 현재 최대 수십 자 수준이다.
 향후 복합 이벤트나 외부 UUID가 포함될 경우를 대비해 VARCHAR(512)로 여유를 두었다. UNIQUE 인덱스가 하나이므로 인덱스 비용은 허용 범위다.
 
 ### 낙관적 락과 비관적 락의 용도 분리
-상태 전이(PENDING → PROCESSING 등)는 `FOR UPDATE SKIP LOCKED`(비관적 락)로 처리하고,
+- 상태 전이(PENDING → PROCESSING 등)는 `FOR UPDATE SKIP LOCKED`(비관적 락)로 처리하고,
 읽음 처리(`is_read` 업데이트)는 `version`(낙관적 락)으로 처리한다.
-두 락을 같은 경로에서 혼용하면 데드락 위험이 있으므로 용도를 명확히 분리했다.
+> 두 락을 같은 경로에서 혼용하면 데드락 위험이 있으므로 용도를 명확히 분리했다.
 
 ### updated_at으로 PROCESSING stuck 감지
-`updated_at`에 `ON UPDATE CURRENT_TIMESTAMP`를 적용하면 별도 타임스탬프 컬럼 없이
-스케줄러가 `status = 'PROCESSING' AND updated_at < NOW() - INTERVAL N MINUTE` 조건만으로
+- `updated_at`에 `ON UPDATE CURRENT_TIMESTAMP`를 적용하면 별도 타임스탬프 컬럼 없이 스케줄러가 `status = 'PROCESSING' AND updated_at < NOW() - INTERVAL N MINUTE` 조건만으로 
 오래 멈춰있는 행을 감지해 PENDING으로 복구할 수 있다.
 
 ### 인덱스 전략
@@ -339,9 +434,9 @@ next_retry_at = now + (baseDelay * 2^retryCount) + random(0, 30초)
 | `idx_status_scheduled_at` | `(status, scheduled_at)` | 예약 발송 스케줄러 전용. 매 분 실행되므로 인덱스 없이는 풀스캔 반복 |
 | `idx_status_expire_at` | `(status, expire_at)` | 만료 알림 처리 스케줄러 전용. expire_at 초과 건 빠른 탐색 |
 
-**인덱스 수에 대한 판단**
-
-인덱스가 6개로 많아 보일 수 있으나, 이 서비스의 쓰기 빈도는 비즈니스 이벤트(수강 신청, 결제 등) 발생 시로 한정되어 있어 INSERT 비용 증가는 허용 범위다.
+> ✅ **인덱스 수에 대한 판단**
+>
+>인덱스가 6개로 많아 보일 수 있으나, 이 서비스의 쓰기 빈도는 비즈니스 이벤트(수강 신청, 결제 등) 발생 시로 한정되어 있어 INSERT 비용 증가는 허용 범위다.
 반면 워커는 초 단위로 폴링하므로, 인덱스 없이 풀스캔이 반복되는 비용이 훨씬 크다.
 
 우선순위를 구분하면 다음과 같다:
