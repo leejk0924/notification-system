@@ -23,6 +23,7 @@ public record NotificationResponse(
         int maxRetryCount,
         String lastFailureReason,
         boolean read,
+        LocalDateTime readAt,
         LocalDateTime sentAt,
         LocalDateTime createdAt
 ) {
@@ -43,6 +44,7 @@ public record NotificationResponse(
                 domain.getMaxRetryCount(),
                 domain.getLastFailureReason(),
                 domain.isRead(),
+                domain.getReadAt(),
                 domain.getSentAt(),
                 domain.getCreatedAt()
         );

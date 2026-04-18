@@ -1,6 +1,7 @@
 package com.jk.notificationservice.adapter.in.web;
 
 import com.jk.notificationservice.adapter.in.web.dto.NotificationResponse;
+import com.jk.notificationservice.application.port.in.MarkNotificationAsReadUseCase;
 import com.jk.notificationservice.application.port.in.QueryNotificationUseCase;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -14,10 +15,19 @@ import org.springframework.web.bind.annotation.*;
 public class NotificationController {
 
     private final QueryNotificationUseCase queryNotificationUseCase;
+    private final MarkNotificationAsReadUseCase markNotificationAsReadUseCase;
 
     @GetMapping("/{id}")
     public NotificationResponse findById(@PathVariable Long id) {
         return NotificationResponse.from(queryNotificationUseCase.findById(id));
+    }
+
+    @PutMapping("/{id}/read")
+    public NotificationResponse markAsRead(
+            @PathVariable Long id,
+            @RequestHeader("X-User-Id") Long recipientId
+    ) {
+        return NotificationResponse.from(markNotificationAsReadUseCase.markAsRead(id, recipientId));
     }
 
     @GetMapping

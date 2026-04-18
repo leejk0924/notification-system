@@ -1,11 +1,13 @@
 package com.jk.notificationservice.domain;
 
+import com.jk.notificationservice.common.exception.NotificationErrorCode;
 import com.jk.notificationservice.common.exception.NotificationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.MethodSource;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -195,25 +197,28 @@ class NotificationRequestTest {
             assertThat(sut.getReadAt()).isNull();
         }
 
-        @Test
-        @DisplayName("SENT가 아닌 상태에서 markAsRead 호출 시 예외가 발생한다")
-        void markAsRead_SENT_아닌_상태에서_예외() {
-            NotificationRequest sut = NotificationRequest.create(
-                    1L, ENROLLMENT_COMPLETED, IN_APP, "test-key", 3,
-                    null, null, null, null
+        @DisplayName("SENT가 아닌 모든 상태에서 markAsRead 호출 시 INVALID_STATE 예외가 발생한다")
+        @ParameterizedTest(name = "{0} 상태")
+        @EnumSource(value = NotificationStatus.class, names = {"SENT"}, mode = EnumSource.Mode.EXCLUDE)
+        void markAsRead_SENT_아닌_상태에서_INVALID_STATE_예외(NotificationStatus status) {
+            NotificationRequest sut = NotificationRequest.reconstruct(
+                    null, 1L, ENROLLMENT_COMPLETED, IN_APP, status,
+                    "test-key-" + status, null, null, null,
+                    null, null, 0, 3, null, null, false, null, null, 0L, null, null
             );
 
             assertThatThrownBy(sut::markAsRead)
-                    .isInstanceOf(NotificationException.class);
+                    .isInstanceOf(NotificationException.class)
+                    .extracting(e -> ((NotificationException) e).getErrorCode())
+                    .isEqualTo(NotificationErrorCode.INVALID_STATE);
         }
 
         private NotificationRequest createSentInApp() {
-            NotificationRequest request = NotificationRequest.create(
-                    1L, ENROLLMENT_COMPLETED, IN_APP, "test-key", 3,
-                    null, null, null, null
+            return NotificationRequest.reconstruct(
+                    null, 1L, ENROLLMENT_COMPLETED, IN_APP, NotificationStatus.SENT,
+                    "test-key", null, null, null,
+                    null, null, 0, 3, null, null, false, null, null, 0L, null, null
             );
-            ReflectionTestUtils.setField(request, "status", NotificationStatus.SENT);
-            return request;
         }
     }
 

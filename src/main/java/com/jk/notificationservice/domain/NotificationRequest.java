@@ -147,9 +147,17 @@ public class NotificationRequest {
         this.status = NotificationStatus.EXPIRED;
     }
 
-    // 읽음 처리 — IN_APP 전용
+    // 읽음 처리 — IN_APP + SENT 전용, 멱등 (이미 읽음이면 readAt 덮어쓰기 방지)
     public void markAsRead() {
         if (this.channel != NotificationChannel.IN_APP) {
+            return;
+        }
+        if (this.status != NotificationStatus.SENT) {
+            throw new NotificationException(NotificationErrorCode.INVALID_STATE,
+                    "SENT 상태인 알림만 읽음 처리할 수 있습니다. 현재 상태: " + this.status
+            );
+        }
+        if (this.read) {
             return;
         }
         this.read = true;
