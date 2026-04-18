@@ -26,6 +26,11 @@ public class NotificationFacade {
         return notificationRepository.findPendingForDispatch(now, limit);
     }
 
+    @Transactional(readOnly = true)
+    public List<NotificationRequest> findStuckProcessing(LocalDateTime stuckBefore, int limit) {
+        return notificationRepository.findStuckProcessing(stuckBefore, limit);
+    }
+
     @Transactional
     public NotificationRequest save(NotificationRequest request) {
         return notificationRepository.save(request);

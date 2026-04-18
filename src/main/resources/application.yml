@@ -9,4 +9,6 @@ spring:
     open-in-view: false
 notification:
   scheduler:
-    dispatch-delay: PT5S    # 5초 설정
+    dispatch-delay: PT5S
+    stuck-threshold: PT5M
+    stuck-recovery-delay: PT1M

@@ -54,4 +54,13 @@ public interface NotificationRepository {
      * @return 발송 대상 알림 목록
      */
     List<NotificationRequest> findPendingForDispatch(LocalDateTime now, int limit);
+
+    /**
+     * 일정 시간 이상 PROCESSING 상태로 멈춘 알림을 조회한다.
+     *
+     * @param stuckBefore 이 시각 이전에 마지막으로 업데이트된 PROCESSING 건
+     * @param limit       최대 조회 건수
+     * @return stuck 알림 목록
+     */
+    List<NotificationRequest> findStuckProcessing(LocalDateTime stuckBefore, int limit);
 }

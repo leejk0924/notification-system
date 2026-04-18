@@ -48,4 +48,11 @@ public class NotificationPersistenceAdapter implements NotificationRepository {
                 .findPendingForDispatch(NotificationStatus.PENDING, now, PageRequest.of(0, limit))
                 .stream().map(mapper::toDomain).toList();
     }
+
+    @Override
+    public List<NotificationRequest> findStuckProcessing(LocalDateTime stuckBefore, int limit) {
+        return jpaRepository
+                .findStuckProcessing(stuckBefore, PageRequest.of(0, limit))
+                .stream().map(mapper::toDomain).toList();
+    }
 }

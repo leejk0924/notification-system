@@ -173,6 +173,17 @@ public class NotificationRequest {
         this.nextRetryAt = nextRetryAt;
     }
 
+    // 상태 복구: PROCESSING stuck → PENDING (서버 크래시 등 비정상 종료 대응)
+    public void recoverFromStuck() {
+        if (this.status != NotificationStatus.PROCESSING) {
+            throw new NotificationException(
+                    "PROCESSING 상태에서만 stuck 복구가 가능합니다. 현재 상태: " + this.status
+            );
+        }
+        this.status = NotificationStatus.PENDING;
+        this.nextRetryAt = null;
+    }
+
     private void validateStatus(NotificationStatus expected) {
         if (this.status != expected) {
             throw new NotificationException(

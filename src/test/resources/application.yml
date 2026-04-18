@@ -1,3 +1,5 @@
 notification:
   scheduler:
     dispatch-delay: PT0.3S
+    stuck-threshold: PT5M
+    stuck-recovery-delay: PT1M

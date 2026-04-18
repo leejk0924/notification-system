@@ -18,7 +18,6 @@ import java.util.Map;
 
 @Configuration
 @EnableAsync
-@EnableScheduling
 public class AsyncConfig implements AsyncConfigurer {
     @Bean(name = TaskExecutionAutoConfiguration.APPLICATION_TASK_EXECUTOR_BEAN_NAME)
     public ThreadPoolTaskExecutor asyncTaskExecutor() {

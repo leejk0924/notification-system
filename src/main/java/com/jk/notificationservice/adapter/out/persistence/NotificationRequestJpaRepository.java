@@ -31,4 +31,11 @@ public interface NotificationRequestJpaRepository extends JpaRepository<Notifica
             @Param("now") LocalDateTime now,
             Pageable pageable
     );
+
+    @Query("SELECT e FROM NotificationRequestEntity e " +
+           "WHERE e.status = 'PROCESSING' AND e.updatedAt < :stuckBefore")
+    List<NotificationRequestEntity> findStuckProcessing(
+            @Param("stuckBefore") LocalDateTime stuckBefore,
+            Pageable pageable
+    );
 }
