@@ -44,7 +44,8 @@ com.jk.notificationservice
 │   │   │   ├── RegisterNotificationUseCase.java
 │   │   │   ├── DispatchNotificationUseCase.java
 │   │   │   ├── RecoverStuckNotificationUseCase.java
-│   │   │   └── QueryNotificationUseCase.java
+│   │   │   ├── QueryNotificationUseCase.java
+│   │   │   └── MarkNotificationAsReadUseCase.java
 │   │   └── out                                  # 아웃바운드 포트
 │   │       ├── NotificationRepository.java
 │   │       ├── NotificationSendPort.java        # 실제 발송 추상화
@@ -55,6 +56,7 @@ com.jk.notificationservice
 │       ├── NotificationQueryService.java         # QueryNotificationUseCase 구현
 │       ├── NotificationDispatchService.java      # DispatchNotificationUseCase 구현
 │       ├── NotificationRecoveryService.java      # RecoverStuckNotificationUseCase 구현
+│       ├── NotificationReadCommandService.java   # MarkNotificationAsReadUseCase 구현 (낙관적 락 기반 멱등 처리)
 │       └── NotificationFacade.java              # 저장·조회 트랜잭션 경계 분리 (Facade)
 │
 ├── adapter
@@ -96,9 +98,12 @@ com.jk.notificationservice
 │   └── NotificationSchedulerProperties.java     # 스케줄러 설정값 (dispatchDelay, stuckThreshold, stuckRecoveryDelay)
 │
 └── common
-    ├── NotificationException.java
-    ├── NotificationNotFoundException.java
-    └── NotificationSendFailureException.java
+    ├── exception
+    │   ├── ErrorCode.java                       # 에러코드 인터페이스
+    │   ├── NotificationErrorCode.java           # 에러코드 enum (NOT_FOUND / ACCESS_DENIED / INVALID_STATE / SEND_FAILURE)
+    │   ├── NotificationException.java           # 단일 도메인 예외 클래스 (ErrorCode 보유)
+    │   └── ErrorResponse.java                   # API 에러 응답 DTO
+    └── ApiControllerAdvice.java                 # @RestControllerAdvice — NotificationException → HTTP 응답 변환
 
 **메시지 브로커 전환 시 변경 범위**
 
@@ -136,12 +141,13 @@ java -jar build/libs/notification-service-0.0.1-SNAPSHOT.jar --spring.profiles.a
 
 ## API 목록 및 예시
 
-### 알림 조회
+### 알림 조회 / 읽음 처리
 
 | Method | URL | 설명 |
 |--------|-----|------|
 | `GET` | `/api/notifications/{id}` | 단건 조회 (상태, 실패 사유 포함) |
 | `GET` | `/api/notifications` | 수신자별 목록 조회 (읽음 필터, 페이징) |
+| `PUT` | `/api/notifications/{id}/read` | 알림 읽음 처리 (IN_APP + SENT 상태만 허용, 멱등) |
 
 **목록 조회 파라미터**
 
