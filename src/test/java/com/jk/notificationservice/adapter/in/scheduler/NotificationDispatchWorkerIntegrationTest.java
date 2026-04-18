@@ -3,7 +3,8 @@ package com.jk.notificationservice.adapter.in.scheduler;
 import com.jk.notificationservice.adapter.out.persistence.NotificationRequestJpaRepository;
 import com.jk.notificationservice.application.port.out.NotificationRepository;
 import com.jk.notificationservice.application.port.out.NotificationSendPort;
-import com.jk.notificationservice.common.NotificationSendFailureException;
+import com.jk.notificationservice.common.exception.NotificationException;
+import com.jk.notificationservice.common.exception.NotificationErrorCode;
 import com.jk.notificationservice.domain.NotificationChannel;
 import com.jk.notificationservice.domain.NotificationRequest;
 import com.jk.notificationservice.domain.NotificationStatus;
@@ -74,7 +75,7 @@ class NotificationDispatchWorkerIntegrationTest {
     @DisplayName("발송 실패 횟수 초과 시 스케줄러가 DEAD_LETTER로 전환된다")
     void dispatch_재시도초과_DEAD_LETTER전환() {
         // given
-        willThrow(new NotificationSendFailureException("발송 실패", null)).given(notificationSendPort).send(any());
+        willThrow(new NotificationException(NotificationErrorCode.SEND_FAILURE, "발송 실패")).given(notificationSendPort).send(any());
 
         String idempotencyKey = "DISPATCH_IT:ENROLLMENT:201:1:EMAIL";
         notificationRepository.save(NotificationRequest.create(

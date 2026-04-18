@@ -1,6 +1,6 @@
 package com.jk.notificationservice.domain;
 
-import com.jk.notificationservice.common.NotificationException;
+import com.jk.notificationservice.common.exception.NotificationException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -159,17 +159,26 @@ class NotificationRequestTest {
     class MarkAsRead {
 
         @Test
-        @DisplayName("IN_APP 채널이면 읽음 처리된다")
-        void markAsRead_IN_APP이면_읽음처리() {
-            NotificationRequest sut = NotificationRequest.create(
-                    1L, ENROLLMENT_COMPLETED, IN_APP, "test-key", 3,
-                    null, null, null, null
-            );
+        @DisplayName("IN_APP + SENT 상태이면 읽음 처리된다")
+        void markAsRead_IN_APP_SENT이면_읽음처리() {
+            NotificationRequest sut = createSentInApp();
 
             sut.markAsRead();
 
             assertThat(sut.isRead()).isTrue();
             assertThat(sut.getReadAt()).isNotNull();
+        }
+
+        @Test
+        @DisplayName("이미 읽음 상태이면 readAt을 덮어쓰지 않는다")
+        void markAsRead_이미읽음이면_readAt_유지() {
+            NotificationRequest sut = createSentInApp();
+            sut.markAsRead();
+            LocalDateTime firstReadAt = sut.getReadAt();
+
+            sut.markAsRead();
+
+            assertThat(sut.getReadAt()).isEqualTo(firstReadAt);
         }
 
         @Test
@@ -184,6 +193,27 @@ class NotificationRequestTest {
 
             assertThat(sut.isRead()).isFalse();
             assertThat(sut.getReadAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("SENT가 아닌 상태에서 markAsRead 호출 시 예외가 발생한다")
+        void markAsRead_SENT_아닌_상태에서_예외() {
+            NotificationRequest sut = NotificationRequest.create(
+                    1L, ENROLLMENT_COMPLETED, IN_APP, "test-key", 3,
+                    null, null, null, null
+            );
+
+            assertThatThrownBy(sut::markAsRead)
+                    .isInstanceOf(NotificationException.class);
+        }
+
+        private NotificationRequest createSentInApp() {
+            NotificationRequest request = NotificationRequest.create(
+                    1L, ENROLLMENT_COMPLETED, IN_APP, "test-key", 3,
+                    null, null, null, null
+            );
+            ReflectionTestUtils.setField(request, "status", NotificationStatus.SENT);
+            return request;
         }
     }
 

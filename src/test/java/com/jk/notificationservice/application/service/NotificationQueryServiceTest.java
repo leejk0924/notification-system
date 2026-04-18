@@ -1,7 +1,8 @@
 package com.jk.notificationservice.application.service;
 
 import com.jk.notificationservice.application.port.out.NotificationRepository;
-import com.jk.notificationservice.common.NotificationNotFoundException;
+import com.jk.notificationservice.common.exception.NotificationException;
+import com.jk.notificationservice.common.exception.NotificationErrorCode;
 import com.jk.notificationservice.domain.NotificationRequest;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -59,7 +60,7 @@ class NotificationQueryServiceTest {
 
             // when & then
             assertThatThrownBy(() -> sut.findById(99L))
-                    .isInstanceOf(NotificationNotFoundException.class)
+                    .isInstanceOf(NotificationException.class)
                     .hasMessageContaining("99");
         }
 

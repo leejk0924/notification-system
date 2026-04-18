@@ -2,7 +2,8 @@ package com.jk.notificationservice.application.service;
 
 import com.jk.notificationservice.application.port.out.NotificationSendPort;
 import com.jk.notificationservice.application.port.out.RetryPolicyPort;
-import com.jk.notificationservice.common.NotificationSendFailureException;
+import com.jk.notificationservice.common.exception.NotificationException;
+import com.jk.notificationservice.common.exception.NotificationErrorCode;
 import com.jk.notificationservice.domain.NotificationChannel;
 import com.jk.notificationservice.domain.NotificationRequest;
 import com.jk.notificationservice.domain.NotificationStatus;
@@ -63,7 +64,7 @@ class NotificationDispatchServiceTest {
             LocalDateTime nextRetry = LocalDateTime.now().plusMinutes(5);
             given(notificationFacade.claimPendingForDispatch(any(), anyInt())).willReturn(List.of(processing));
             given(notificationFacade.save(any())).willAnswer(inv -> inv.getArgument(0));
-            willThrow(new NotificationSendFailureException("일시 오류", null)).given(notificationSendPort).send(any());
+            willThrow(new NotificationException(NotificationErrorCode.SEND_FAILURE, "일시 오류")).given(notificationSendPort).send(any());
             given(retryPolicyPort.calculateNextRetryAt(anyInt())).willReturn(nextRetry);
 
             sut.dispatch();
@@ -81,7 +82,7 @@ class NotificationDispatchServiceTest {
             NotificationRequest processing = createProcessingRequest(3);
             given(notificationFacade.claimPendingForDispatch(any(), anyInt())).willReturn(List.of(processing));
             given(notificationFacade.save(any())).willAnswer(inv -> inv.getArgument(0));
-            willThrow(new NotificationSendFailureException("발송 실패", null)).given(notificationSendPort).send(any());
+            willThrow(new NotificationException(NotificationErrorCode.SEND_FAILURE, "발송 실패")).given(notificationSendPort).send(any());
 
             sut.dispatch();
 

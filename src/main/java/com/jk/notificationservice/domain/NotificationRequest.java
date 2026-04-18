@@ -1,6 +1,7 @@
 package com.jk.notificationservice.domain;
 
-import com.jk.notificationservice.common.NotificationException;
+import com.jk.notificationservice.common.exception.NotificationErrorCode;
+import com.jk.notificationservice.common.exception.NotificationException;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -139,7 +140,7 @@ public class NotificationRequest {
     // 상태 전이: 유효 기한 초과
     public void markAsExpired() {
         if (this.status != NotificationStatus.PENDING && this.status != NotificationStatus.PROCESSING) {
-            throw new NotificationException(
+            throw new NotificationException(NotificationErrorCode.INVALID_STATE,
                     "PENDING 또는 PROCESSING 상태에서만 EXPIRED로 전이할 수 있습니다. 현재 상태: " + this.status
             );
         }
@@ -176,7 +177,7 @@ public class NotificationRequest {
     // 상태 복구: PROCESSING stuck → PENDING (서버 크래시 등 비정상 종료 대응)
     public void recoverFromStuck() {
         if (this.status != NotificationStatus.PROCESSING) {
-            throw new NotificationException(
+            throw new NotificationException(NotificationErrorCode.INVALID_STATE,
                     "PROCESSING 상태에서만 stuck 복구가 가능합니다. 현재 상태: " + this.status
             );
         }
@@ -186,7 +187,7 @@ public class NotificationRequest {
 
     private void validateStatus(NotificationStatus expected) {
         if (this.status != expected) {
-            throw new NotificationException(
+            throw new NotificationException(NotificationErrorCode.INVALID_STATE,
                     expected + " 상태에서만 가능한 전이입니다. 현재 상태: " + this.status
             );
         }

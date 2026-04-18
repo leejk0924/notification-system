@@ -3,7 +3,7 @@ package com.jk.notificationservice.application.service;
 import com.jk.notificationservice.application.port.in.DispatchNotificationUseCase;
 import com.jk.notificationservice.application.port.out.NotificationSendPort;
 import com.jk.notificationservice.application.port.out.RetryPolicyPort;
-import com.jk.notificationservice.common.NotificationSendFailureException;
+import com.jk.notificationservice.common.exception.NotificationException;
 import com.jk.notificationservice.domain.NotificationRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,7 +35,7 @@ public class NotificationDispatchService implements DispatchNotificationUseCase 
             notificationSendPort.send(processing);
             processing.markAsSent();
             log.info("알림 발송 완료. id={}", processing.getId());
-        } catch (NotificationSendFailureException e) {
+        } catch (NotificationException e) {
             log.warn("알림 발송 실패. id={}, reason={}", processing.getId(), e.getMessage());
             processing.handleFailure(e.getMessage(), retryPolicyPort.calculateNextRetryAt(processing.getRetryCount()));
         }

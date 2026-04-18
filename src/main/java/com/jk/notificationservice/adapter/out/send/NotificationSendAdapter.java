@@ -1,7 +1,8 @@
 package com.jk.notificationservice.adapter.out.send;
 
 import com.jk.notificationservice.application.port.out.NotificationSendPort;
-import com.jk.notificationservice.common.NotificationSendFailureException;
+import com.jk.notificationservice.common.exception.NotificationErrorCode;
+import com.jk.notificationservice.common.exception.NotificationException;
 import com.jk.notificationservice.domain.NotificationChannel;
 import com.jk.notificationservice.domain.NotificationRequest;
 import org.springframework.stereotype.Component;
@@ -24,7 +25,7 @@ public class NotificationSendAdapter implements NotificationSendPort {
     public void send(NotificationRequest request) {
         ChannelSender sender = senders.get(request.getChannel());
         if (sender == null) {
-            throw new NotificationSendFailureException("지원하지 않는 채널: " + request.getChannel(), null);
+            throw new NotificationException(NotificationErrorCode.SEND_FAILURE, "지원하지 않는 채널: " + request.getChannel());
         }
         sender.send(request);
     }
