@@ -42,13 +42,9 @@ com.jk.notificationservice
 │   ├── port
 │   │   ├── in                                   # 인바운드 포트 (유스케이스 인터페이스)
 │   │   │   ├── RegisterNotificationUseCase.java
+│   │   │   ├── DispatchNotificationUseCase.java
+│   │   │   ├── RecoverStuckNotificationUseCase.java
 │   │   │   └── QueryNotificationUseCase.java
-│   │   └── out                                  # 아웃바운드 포트
-│   │       ├── NotificationRepository.java
-│   │       └── DeadLetterPort.java              # 등록 실패 저장 추상화
-│   │   ├── DispatchNotificationUseCase.java
-│   │   ├── RegisterNotificationUseCase.java
-│   │   └── QueryNotificationUseCase.java
 │   │   └── out                                  # 아웃바운드 포트
 │   │       ├── NotificationRepository.java
 │   │       ├── NotificationSendPort.java        # 실제 발송 추상화
@@ -58,6 +54,7 @@ com.jk.notificationservice
 │       ├── NotificationCommandService.java       # RegisterNotificationUseCase 구현
 │       ├── NotificationQueryService.java         # QueryNotificationUseCase 구현
 │       ├── NotificationDispatchService.java      # DispatchNotificationUseCase 구현
+│       ├── NotificationRecoveryService.java      # RecoverStuckNotificationUseCase 구현
 │       └── NotificationFacade.java              # 저장·조회 트랜잭션 경계 분리 (Facade)
 │
 ├── adapter
@@ -65,7 +62,8 @@ com.jk.notificationservice
 │   │   ├── event
 │   │   │   └── NotificationEventListener.java   # AFTER_COMMIT + @Async 이벤트 처리
 │   │   ├── scheduler
-│   │   │   └── NotificationDispatchScheduler.java  # fixedDelay 폴링 스케줄러
+│   │   │   ├── NotificationDispatchScheduler.java       # fixedDelay 폴링 스케줄러
+│   │   │   └── ProcessingStuckRecoveryScheduler.java    # PROCESSING stuck 감지 및 복구 스케줄러
 │   │   └── web
 │   │       ├── NotificationController.java       # 알림 조회 API
 │   │       ├── DummyEventController.java         # 이벤트 발행 테스트용 API
@@ -93,7 +91,9 @@ com.jk.notificationservice
 │           └── MockInAppChannelSender.java          # IN_APP Mock 구현체
 │
 ├── config
-│   └── AsyncConfig.java                         # 스레드 풀, MDC 전파, Graceful Shutdown, @EnableScheduling
+│   ├── AsyncConfig.java                         # 스레드 풀, MDC 전파, Graceful Shutdown
+│   ├── SchedulerConfig.java                     # @EnableScheduling, @ConfigurationPropertiesScan
+│   └── NotificationSchedulerProperties.java     # 스케줄러 설정값 (dispatchDelay, stuckThreshold, stuckRecoveryDelay)
 │
 └── common
     ├── NotificationException.java
@@ -385,12 +385,17 @@ ApplicationEventPublisher.publishEvent(NotificationEvent)
 알림 요청 DB 등록 (PENDING) ─── 비즈니스 트랜잭션과 동일 커넥션
     │
     ▼
-워커 폴링 (SKIP LOCKED)
+NotificationFacade.claimPendingForDispatch()  @Transactional  ← 하나의 트랜잭션
     │
-    ├─ expire_at 초과 ──▶ 상태 → EXPIRED (스케줄러 실행 간격 사이의 안전망)
+    ├─ SELECT ... FOR UPDATE SKIP LOCKED  ← PENDING 행 점유 (다른 워커 접근 차단)
+    │
+    ├─ expire_at 초과 ──▶ 상태 → EXPIRED, 저장 후 목록에서 제외 (안전망)
+    │
+    └─ 정상 ──▶ 상태 → PROCESSING, 저장 후 반환
+                (SELECT 락과 PROCESSING 저장이 같은 트랜잭션 — 점유 직후 상태 전이)
     │
     ▼
-상태 → PROCESSING
+dispatchSingle() — PROCESSING 상태 건만 처리
     │
     ├─ 성공 ──▶ 상태 → SENT
     │
@@ -439,8 +444,23 @@ next_retry_at = now + min(2^retryCount * 60초, 1800초) + random(0, 9초)
 다중 인스턴스 환경에서 여러 워커가 동시에 폴링해도 `SKIP LOCKED`로 각자 다른 행을 가져간다.
 이미 처리 중인 행은 건너뛰어 중복 발송을 방지한다.
 
-### 서버 재시작 대응
-서버 재시작 시 `PROCESSING` 상태로 남아있는 항목은 일정 시간이 지나면 `PENDING`으로 복구해 재처리한다.
+`SELECT ... FOR UPDATE SKIP LOCKED`와 `PROCESSING` 상태 저장은 `claimPendingForDispatch()` 하나의 `@Transactional` 안에서 원자적으로 처리된다.
+SELECT로 행을 점유한 직후 같은 트랜잭션 내에서 PROCESSING으로 전이하고 저장한 뒤 커밋한다.
+SELECT와 상태 전이를 별도 트랜잭션으로 나누면, SELECT 커밋 시점에 락이 풀려 다른 인스턴스가 같은 행을 중복으로 점유할 수 있다.
+
+### PROCESSING stuck 복구 및 서버 재시작 대응
+
+```
+[ProcessingStuckRecoveryScheduler] 주기적 실행 (stuckRecoveryDelay 간격)
+    │
+    └─ status = PROCESSING AND updated_at < now - stuckThreshold 인 건 조회
+           │
+           └─ recoverFromStuck() → 상태 → PENDING, nextRetryAt 초기화
+                  (retryCount 유지 — stuck은 발송 실패가 아님)
+```
+
+서버 재시작 후 `PROCESSING`으로 남은 건도 `stuckThreshold`(기본 5분) 경과 후 동일하게 복구된다.
+다중 인스턴스 환경에서 여러 워커가 동시에 복구를 시도해도 결과는 동일하므로 멱등성이 보장된다.
 
 ## 미구현 / 제약사항
 
